@@ -1,0 +1,16 @@
+[package]
+name = "erpc-sys"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.65"
+authors = ["Wenbo Zhang <Wenbo Zhang@iomesh.com>"]
+license = "Apache-2.0"
+categories = [ "RPC" ]
+
+[dependencies]
+autocxx = "0.26.0"
+cxx = "1.0"
+
+[build-dependencies]
+autocxx-build = "0.26.0"
+miette = { version = "5.10.0", features = ["fancy"] }

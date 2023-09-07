@@ -1,0 +1,18 @@
+[package]
+name = "erpc-rs"
+description = "Rust wrapper for erpc-io's eRPC fast and general-purpose RPC library for datacenter networks"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.65"
+authors = ["Wenbo Zhang <Wenbo Zhang@iomesh.com>"]
+license = "Apache-2.0"
+categories = [ "RPC" ]
+
+[workspace]
+members = ["erpc-sys"]
+exclude = ["examples/hello_world"]
+
+[dependencies]
+anyhow = "1.0.75"
+erpc-sys = { path = "erpc-sys", version = "0.1.0" }
+thiserror = "1.0.48"
