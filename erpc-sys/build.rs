@@ -1,3 +1,5 @@
+// Copyright (c) 2023, IOMesh Inc. All rights reserved.
+
 use std::path::Path;
 use std::{env, fs, path::PathBuf, process::Command};
 
@@ -118,11 +120,13 @@ fn build_erpc() {
 }
 
 fn main() -> miette::Result<()> {
+    println!("cargo:rerun-if-changed=erpc");
+
     if !Path::new("erpc/README.md").exists() {
         update_submodules();
     }
     if !try_to_find_and_link_lib("ERPC") {
-        println!("cargo:rerun-if-changed=erpc/");
+        println!("cargo:rerun-if-changed=erpc");
         fail_on_empty_directory("erpc");
         build_erpc();
     }

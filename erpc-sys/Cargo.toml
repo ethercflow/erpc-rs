@@ -13,4 +13,6 @@ cxx = "1.0"
 
 [build-dependencies]
 autocxx-build = "0.26.0"
+cc = "1.0"
+cmake = "0.1"
 miette = { version = "5.10.0", features = ["fancy"] }

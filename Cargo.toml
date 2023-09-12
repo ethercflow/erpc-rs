@@ -10,7 +10,7 @@ categories = [ "RPC" ]
 
 [workspace]
 members = ["erpc-sys"]
-exclude = ["examples/hello_world"]
+exclude = ["apps/large_rpc_tput", "examples/hello_world"]
 
 [dependencies]
 anyhow = "1.0.75"
