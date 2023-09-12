@@ -1,8 +1,6 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use crate::msg_buffer::MsgBuffer;
-use crate::nexus::Nexus;
-use crate::req_handle::ReqHandle;
+use crate::{msg_buffer::MsgBuffer, nexus::Nexus, req_handle::ReqHandle, timely::Timely, timing_wheel::TimingWheel};
 use erpc_sys::{
     c_int, c_void,
     erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
@@ -116,6 +114,51 @@ impl Rpc {
                 resp_msgbuf.as_inner_mut().get_unchecked_mut(),
             );
         }
+    }
+
+    #[inline]
+    pub fn get_timely(&mut self, session_num: c_int) -> Timely {
+        Timely::from_inner_raw(self.as_inner_mut().get_timely(session_num))
+    }
+
+    #[inline]
+    pub fn get_bandwidth(&self) -> usize {
+        self.as_inner().get_bandwidth()
+    }
+
+    #[inline]
+    pub fn get_freq_ghz(&self) -> f64 {
+        self.as_inner().get_freq_ghz()
+    }
+
+    #[inline]
+    pub fn get_rpc_id(&self) -> u8 {
+        self.as_inner().get_rpc_id()
+    }
+
+    #[inline]
+    pub fn get_wheel(&mut self) -> TimingWheel {
+        TimingWheel::from_inner_raw(self.as_inner_mut().get_wheel())
+    }
+
+    #[inline]
+    pub fn get_num_re_tx(&self, session_num: c_int) -> usize {
+        self.as_inner().get_num_re_tx(session_num)
+    }
+
+    #[inline]
+    pub fn reset_num_re_tx(&mut self, session_num: c_int) {
+        self.as_inner_mut().reset_num_re_tx(session_num);
+    }
+
+    #[inline]
+    pub fn sec_since_creation(&mut self) -> f64 {
+        self.as_inner_mut().sec_since_creation()
+    }
+
+    #[inline]
+    pub fn force_retry_connect_on_invalid_rpc_id(&mut self) {
+        self.as_inner_mut().force_retry_connect_on_invalid_rpc_id();
     }
 
     #[inline]

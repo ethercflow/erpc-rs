@@ -15,6 +15,9 @@ pub struct Nexus {
     inner: UniquePtr<erpc::Nexus>,
 }
 
+unsafe impl Send for Nexus {}
+unsafe impl Sync for Nexus {}
+
 impl Nexus {
     #[inline]
     pub fn new(local_uri: &str, numa_node: usize) -> Self {

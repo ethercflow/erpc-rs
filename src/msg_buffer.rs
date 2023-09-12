@@ -9,8 +9,13 @@ pub struct MsgBuffer {
 
 impl MsgBuffer {
     #[inline]
-    pub fn get_inner_buf(&mut self) -> *mut u8 {
-        self.as_inner_mut().get_inner_buf()
+    pub fn get_inner_buf(&self) -> *mut u8 {
+        self.as_inner().get_inner_buf()
+    }
+
+    #[inline]
+    pub fn get_data_size(&self) -> usize {
+        self.as_inner().get_data_size()
     }
 
     #[inline]
