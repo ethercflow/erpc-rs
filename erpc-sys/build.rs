@@ -56,7 +56,7 @@ fn update_submodules() {
 fn erpc_include_dir() -> String {
     match env::var("ERPC_INCLUDE_DIR") {
         Ok(val) => val,
-        Err(_) => "./erpc/src".to_string(),
+        Err(_) => "./eRPC/src".to_string(),
     }
 }
 
@@ -83,7 +83,7 @@ fn bindgen_erpc() -> miette::Result<()> {
 }
 
 fn build_erpc() {
-    let dir = "./erpc";
+    let dir = "./eRPC";
     let mut program = "cmake";
     let mut args = ["-DPERF=OFF", "-DTRANSPORT=dpdk"];
     println!(
@@ -122,12 +122,12 @@ fn build_erpc() {
 fn main() -> miette::Result<()> {
     println!("cargo:rerun-if-changed=erpc");
 
-    if !Path::new("erpc/README.md").exists() {
+    if !Path::new("eRPC/README.md").exists() {
         update_submodules();
     }
     if !try_to_find_and_link_lib("ERPC") {
-        println!("cargo:rerun-if-changed=erpc");
-        fail_on_empty_directory("erpc");
+        println!("cargo:rerun-if-changed=eRPC");
+        fail_on_empty_directory("eRPC");
         build_erpc();
     }
     bindgen_erpc()?;

@@ -1,4 +1,4 @@
 [submodule "erpc-sys/erpc"]
-	path = erpc-sys/erpc
+	path = erpc-sys/eRPC
 	url = https://github.com/ethercflow/erpc.git
 	branch = dev
