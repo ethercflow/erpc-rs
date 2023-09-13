@@ -1,8 +1,9 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use crate::K_APP_DATA_BYTE;
 use autocxx::WithinUniquePtr;
 use erpc_rs::prelude::*;
-use std::{mem::MaybeUninit, ops::Add};
+use std::{mem::MaybeUninit, ops::Add, ptr};
 
 const K_APP_MAX_CONCURRENCY: usize = 32;
 
@@ -59,7 +60,7 @@ impl Default for BasicAppContext {
             fastrand: FastRand::new().within_unique_ptr(),
             session_num_vec: Vec::default(),
             thread_id: usize::MAX,
-            num_sm_resps: usize::MAX,
+            num_sm_resps: 0,
             ping_pending: false,
         }
     }
@@ -71,6 +72,12 @@ impl BasicAppContext {
         let x = self.fastrand.pin_mut().next_u32();
         let rand_index = (x as usize * self.session_num_vec.len()) >> 32;
         self.session_num_vec[rand_index]
+    }
+}
+
+impl Drop for BasicAppContext {
+    fn drop(&mut self) {
+        self.RPC.assmue_init_drop();
     }
 }
 
@@ -87,8 +94,9 @@ pub struct AppContext {
     pub stat_rx_bytes_tot: usize,
     pub stat_tx_bytes_tot: usize,
     pub req_ts: [usize; K_APP_MAX_CONCURRENCY],
-    pub req_msgbuf: MaybeUninit<[MsgBuffer; K_APP_MAX_CONCURRENCY]>,
-    pub resp_msgbuf: MaybeUninit<[MsgBuffer; K_APP_MAX_CONCURRENCY]>,
+    pub req_msgbuf: [MaybeUninit<MsgBuffer>; K_APP_MAX_CONCURRENCY],
+    pub resp_msgbuf: [MaybeUninit<MsgBuffer>; K_APP_MAX_CONCURRENCY],
+    pub msgbuf_nr: usize,
 
     pub args_req_size: usize,
     pub args_resp_size: usize,
@@ -106,8 +114,9 @@ impl Default for AppContext {
             stat_rx_bytes_tot: 0,
             stat_tx_bytes_tot: 0,
             req_ts: [0; K_APP_MAX_CONCURRENCY],
-            req_msgbuf: MaybeUninit::uninit(),
-            resp_msgbuf: MaybeUninit::uninit(),
+            req_msgbuf: MaybeUninit::uninit_array(),
+            resp_msgbuf: MaybeUninit::uninit_array(),
+            msgbuf_nr: 0,
             args_req_size: 0,
             args_resp_size: 0,
             args_process_id: 0,
@@ -118,18 +127,39 @@ impl Default for AppContext {
 
 impl AppContext {
     pub fn alloc_req_resp_msg_buffers(&mut self, num: usize) {
-        unsafe {
-            for i in 0..num {
-                self.req_msgbuf.assume_init_mut()[i] = self
-                    .base
-                    .rpc
-                    .assume_init_mut()
-                    .alloc_msg_buffer_or_die(self.args_req_size);
-                self.resp_msgbuf.assume_init_mut()[i] = self
-                    .base
-                    .rpc
-                    .assume_init_mut()
-                    .alloc_msg_buffer_or_die(self.args_resp_size);
+        for i in 0..num {
+            unsafe {
+                self.req_msgbuf[i].as_mut_ptr().write(
+                    self.base
+                        .rpc
+                        .assume_init_mut()
+                        .alloc_msg_buffer_or_die(self.args_req_size),
+                );
+                ptr::write_bytes(
+                    self.req_msgbuf[i].assume_init_mut().get_inner_buf(),
+                    K_APP_DATA_BYTE,
+                    self.args_req_size,
+                );
+            }
+            unsafe {
+                self.resp_msgbuf[i].as_mut_ptr().write(
+                    self.base
+                        .rpc
+                        .assume_init_mut()
+                        .alloc_msg_buffer_or_die(self.args_resp_size),
+                );
+            }
+        }
+        self.msgbuf_nr = num;
+    }
+}
+
+impl Drop for AppContext {
+    fn drop(&mut self) {
+        for i in 0..self.msgbuf_nr {
+            unsafe {
+                self.req_msgbuf[i].assumue_init_drop();
+                self.resp_msgbuf[i].assume_init_drop();
             }
         }
     }

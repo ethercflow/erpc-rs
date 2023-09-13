@@ -15,7 +15,7 @@ pub struct Args {
     #[arg(short, long)]
     pub num_processes: usize,
     /// The global ID of this process
-    #[arg(short, long)]
+    #[arg(short, long, default_value_t = usize::MAX)]
     pub process_id: usize,
     /// NUMA node for this process
     #[arg(short, long)]

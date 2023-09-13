@@ -1,6 +1,7 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
 #![feature(sort_floats)]
+#![feature(maybe_uninit_uninit_array)]
 
 mod cli;
 mod context;
@@ -105,7 +106,7 @@ extern "C" fn app_cont_func(context: *mut c_void, tag: *mut c_void) {
     let c = unsafe { &mut *(context as *mut AppContext) };
     let msgbuf_idx = tag as usize;
 
-    let resp_msgbuf = unsafe { &c.resp_msgbuf.assume_init_mut()[msgbuf_idx] };
+    let resp_msgbuf = unsafe { &c.resp_msgbuf[msgbuf_idx].assume_init_mut() };
 
     // Measure latency. 1 us granularity is sufficient for large RPC latency.
     let usec = to_usec(
@@ -126,7 +127,8 @@ extern "C" fn app_cont_func(context: *mut c_void, tag: *mut c_void) {
 
     // Create a new request clocking this response, and put in request queue
     unsafe {
-        *c.req_msgbuf.assume_init_mut()[msgbuf_idx]
+        *c.req_msgbuf[msgbuf_idx]
+            .assume_init_mut()
             .get_inner_buf()
             .wrapping_offset(0) = K_APP_DATA_BYTE;
     }
@@ -169,8 +171,8 @@ extern "C" fn req_handler(req_handle: *mut RawReqHandle, context: *mut c_void) {
 
 // Send a request using this MsgBuffer
 fn send_req(c: &mut AppContext, idx: usize) {
-    let req_msgbuf = unsafe { &mut c.req_msgbuf.assume_init_mut()[idx] };
-    let resp_msgbuf = unsafe { &mut c.resp_msgbuf.assume_init_mut()[idx] };
+    let req_msgbuf = unsafe { &mut c.req_msgbuf[idx].assume_init_mut() };
+    let resp_msgbuf = unsafe { &mut c.resp_msgbuf[idx].assume_init_mut() };
     if req_msgbuf.get_data_size() != c.args_req_size {
         panic!("allocated req_msgbuf's data size not eq args' req_size");
     }
