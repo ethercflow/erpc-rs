@@ -7,6 +7,9 @@ pub struct MsgBuffer {
     pub(crate) inner: UniquePtr<erpc::MsgBuffer>,
 }
 
+unsafe impl Send for MsgBuffer {}
+unsafe impl Sync for MsgBuffer {}
+
 impl MsgBuffer {
     #[inline]
     pub fn get_inner_buf(&self) -> *mut u8 {

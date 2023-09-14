@@ -1,6 +1,9 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use crate::{msg_buffer::MsgBuffer, nexus::Nexus, req_handle::ReqHandle, timely::Timely, timing_wheel::TimingWheel};
+use crate::{
+    msg_buffer::MsgBuffer, nexus::Nexus, req_handle::ReqHandle, timely::Timely,
+    timing_wheel::TimingWheel,
+};
 use erpc_sys::{
     c_int, c_void,
     erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
@@ -14,6 +17,10 @@ pub type ContFunc = extern "C" fn(*mut c_void, *mut c_void);
 pub struct Rpc {
     inner: UniquePtr<erpc::Rpc>,
 }
+
+/// Notice: Only MsgBuffer related ops are thread safe
+unsafe impl Send for Rpc {}
+unsafe impl Sync for Rpc {}
 
 impl Rpc {
     #[inline]
@@ -81,6 +88,11 @@ impl Rpc {
                 .alloc_msg_buffer_or_die(max_data_size)
                 .within_unique_ptr(),
         }
+    }
+
+    #[inline]
+    pub fn free_msg_buffer(&mut self, msg_buffer: &MsgBuffer) {
+        self.inner.pin_mut().free_msg_buffer(msg_buffer.as_inner());
     }
 
     #[inline]

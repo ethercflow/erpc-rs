@@ -27,6 +27,10 @@ path = "server.rs"
 name = "hello_server_async"
 path = "server_async.rs"
 
+[[bin]]
+name = "hello_server_async2"
+path = "server_async2.rs"
+
 [build-dependencies]
 pkg-config = "0.3.27"
 regex = "1.9.5"

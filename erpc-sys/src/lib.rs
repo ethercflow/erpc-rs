@@ -37,3 +37,10 @@ unsafe impl Sync for erpc::Nexus {}
 
 unsafe impl Send for erpc::ReqHandle {}
 unsafe impl Sync for erpc::ReqHandle {}
+
+/// Notice: Only MsgBuffer related ops are thread safe
+unsafe impl Send for erpc::Rpc {}
+unsafe impl Sync for erpc::Rpc {}
+
+unsafe impl Send for erpc::MsgBuffer {}
+unsafe impl Sync for erpc::MsgBuffer {}
