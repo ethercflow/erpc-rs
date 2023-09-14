@@ -85,7 +85,7 @@ fn bindgen_erpc() -> miette::Result<()> {
 fn build_erpc() {
     let dir = "./eRPC";
     let mut program = "cmake";
-    let mut args = ["-DPERF=OFF", "-DTRANSPORT=dpdk"];
+    let mut args = ["-DPERF=ON", "-DTRANSPORT=dpdk"];
     println!(
         "Running command: \"{} {}\" in dir: {}",
         program,
