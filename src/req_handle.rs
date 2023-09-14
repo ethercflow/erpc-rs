@@ -8,6 +8,9 @@ pub struct ReqHandle {
     inner: *mut RawReqHandle,
 }
 
+unsafe impl Send for ReqHandle {}
+unsafe impl Sync for ReqHandle {}
+
 impl ReqHandle {
     #[inline]
     pub fn from_inner_raw(raw: *mut RawReqHandle) -> Self {

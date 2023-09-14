@@ -34,3 +34,6 @@ pub use ffi::*;
 
 unsafe impl Send for erpc::Nexus {}
 unsafe impl Sync for erpc::Nexus {}
+
+unsafe impl Send for erpc::ReqHandle {}
+unsafe impl Sync for erpc::ReqHandle {}
