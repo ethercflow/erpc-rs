@@ -77,11 +77,9 @@ impl BasicAppContext {
 
 impl Drop for BasicAppContext {
     fn drop(&mut self) {
-<<<<<<< HEAD
-        self.RPC.assmue_init_drop();
-=======
-        unsafe { self.rpc.assume_init_drop() };
->>>>>>> 8209aa2 (fix(apps): fixed incorrect initializations and leaks)
+        unsafe {
+            self.rpc.assume_init_drop();
+        }
     }
 }
 
