@@ -1,7 +1,7 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
 use crate::msg_buffer::MsgBuffer;
-use erpc_sys::{erpc::ReqHandle as RawReqHandle, erpc::MsgBuffer as RawMsgBuffer, WithinUniquePtr};
+use erpc_sys::{erpc::MsgBuffer as RawMsgBuffer, erpc::ReqHandle as RawReqHandle, WithinUniquePtr};
 use std::pin::Pin;
 
 pub struct ReqHandle {
@@ -28,6 +28,16 @@ impl ReqHandle {
             inner: self
                 .as_inner_mut()
                 .get_pre_resp_msgbuf()
+                .within_unique_ptr(),
+        }
+    }
+
+    #[inline]
+    pub fn init_dyn_resp_msgbuf_from_allocated(&mut self, msgbuf: &mut MsgBuffer) -> MsgBuffer {
+        MsgBuffer {
+            inner: self
+                .as_inner_mut()
+                .init_dyn_resp_msgbuf_from_allocated(msgbuf.as_inner_mut())
                 .within_unique_ptr(),
         }
     }

@@ -7,10 +7,7 @@ use common::*;
 use crossbeam::channel;
 use crossbeam_channel::{unbounded, TryRecvError};
 use erpc_rs::prelude::*;
-use std::{
-    mem::{self, MaybeUninit},
-    ptr, thread,
-};
+use std::{mem::MaybeUninit, ptr, thread};
 use tokio::{fs, runtime::Handle, sync::mpsc};
 
 extern "C" fn req_handler(req_handle: *mut RawReqHandle, context: *mut c_void) {
@@ -87,9 +84,7 @@ async fn main() -> Result<()> {
         loop {
             match c.rx.try_recv() {
                 Ok(mut resp) => unsafe {
-                    let mut resp_msgbuf = resp.req_handle.get_dyn_resp_msgbuf();
-                    mem::swap(
-                        &mut resp_msgbuf,
+                    let mut resp_msgbuf = resp.req_handle.init_dyn_resp_msgbuf_from_allocated(
                         &mut c
                             .rpc
                             .assume_init_mut()

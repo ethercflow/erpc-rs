@@ -16,7 +16,7 @@ use profile_victim::*;
 use signal_hook::consts::SIGINT;
 use std::{
     io::Error,
-    mem::{self, MaybeUninit},
+    mem::MaybeUninit,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -143,18 +143,12 @@ extern "C" fn req_handler(req_handle: *mut RawReqHandle, context: *mut c_void) {
     let resp_byte = unsafe { *(*req_msgbuf).get_inner_buf().wrapping_offset(0) };
 
     // Use dynamic response
-    let mut resp_msgbuf = req_handle.get_dyn_resp_msgbuf();
-    unsafe {
-        mem::swap(
-            &mut resp_msgbuf,
-            &mut c
-                .base
-                .rpc
-                .assume_init_mut()
-                .alloc_msg_buffer_or_die(c.args_resp_size),
-        );
+    let mut resp_msgbuf = req_handle.init_dyn_resp_msgbuf_from_allocated(
+        &mut unsafe { c.base.rpc.assume_init_mut() }.alloc_msg_buffer_or_die(c.args_resp_size),
+    );
 
-        // Touch the response
+    // Touch the response
+    unsafe {
         *resp_msgbuf.get_inner_buf().wrapping_offset(0) = resp_byte;
     }
 

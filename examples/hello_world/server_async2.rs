@@ -7,10 +7,7 @@ use common::*;
 use crossbeam::channel;
 use crossbeam_channel::{unbounded, TryRecvError};
 use erpc_rs::prelude::*;
-use std::{
-    mem::{self, MaybeUninit},
-    slice, thread,
-};
+use std::{mem::MaybeUninit, slice, thread};
 use tokio::{fs::File, io::AsyncReadExt, runtime::Handle, sync::mpsc};
 
 extern "C" fn req_handler(req_handle: *mut RawReqHandle, context: *mut c_void) {
@@ -89,13 +86,12 @@ async fn main() -> Result<()> {
         loop {
             match c.rx.try_recv() {
                 Ok(mut resp) => unsafe {
-                    let mut resp_msgbuf = resp.req_handle.get_dyn_resp_msgbuf();
-                    mem::swap(&mut resp_msgbuf, &mut resp.msg_buf);
+                    let mut resp_msgbuf = resp
+                        .req_handle
+                        .init_dyn_resp_msgbuf_from_allocated(&mut resp.msg_buf);
                     c.rpc
                         .assume_init_mut()
                         .enqueue_response(&mut resp.req_handle, &mut resp_msgbuf);
-                    mem::swap(&mut resp.msg_buf, &mut resp_msgbuf);
-                    c.rpc.assume_init_mut().free_msg_buffer(&resp.msg_buf);
                 },
                 Err(TryRecvError::Empty) => {}
                 _ => unreachable!(),
@@ -114,6 +110,7 @@ async fn main() -> Result<()> {
             let metadata = file.metadata().await.unwrap();
             let resp_size = metadata.len() as usize;
             let msg_buf = req.rpc.alloc_msg_buffer_or_die(resp_size);
+            // FIXME: currently it won't write data to msg_buf
             let mut msg_buf_vec =
                 unsafe { slice::from_raw_parts(msg_buf.get_inner_buf(), resp_size).to_vec() };
             file.read_to_end(&mut msg_buf_vec).await.unwrap();
