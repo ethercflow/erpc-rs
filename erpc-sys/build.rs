@@ -1,37 +1,16 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use cmake::Config as CmakeConfig;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::path::Path;
-use std::{env, fs, path::PathBuf, process::Command};
-
-fn fail_on_empty_directory(name: &str) {
-    if fs::read_dir(name).unwrap().count() == 0 {
-        println!("The `{name}` directory is empty, did you forget to pull the submodules?");
-        println!("Try `git submodule update --init --recursive`");
-        panic!();
-    }
-}
-fn try_to_find_and_link_lib(lib_name: &str) -> bool {
-    println!("cargo:rerun-if-env-changed={lib_name}_COMPILE");
-    if let Ok(v) = env::var(format!("{lib_name}_COMPILE")) {
-        if v.to_lowercase() == "true" || v == "1" {
-            return false;
-        }
-    }
-
-    println!("cargo:rerun-if-env-changed={lib_name}_LIB_DIR");
-    println!("cargo:rerun-if-env-changed={lib_name}_STATIC");
-
-    if let Ok(lib_dir) = env::var(format!("{lib_name}_LIB_DIR")) {
-        println!("cargo:rustc-link-search=native={lib_dir}");
-        let mode = match env::var_os(format!("{lib_name}_STATIC")) {
-            Some(_) => "static",
-            None => "dylib",
-        };
-        println!("cargo:rustc-link-lib={}={}", mode, lib_name.to_lowercase());
-        return true;
-    }
-    false
-}
+use std::{
+    env::{self, VarError},
+    fs, io,
+    path::PathBuf,
+    process::Command,
+};
+use walkdir::WalkDir;
 
 fn update_submodules() {
     let program = "git";
@@ -54,19 +33,28 @@ fn update_submodules() {
 }
 
 fn erpc_include_dir() -> String {
-    match env::var("ERPC_INCLUDE_DIR") {
-        Ok(val) => val,
-        Err(_) => "./eRPC/src".to_string(),
-    }
+    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("eRPC")
+        .join("src")
+        .to_str()
+        .unwrap()
+        .to_string()
 }
 
 fn bindgen_erpc() -> miette::Result<()> {
-    let asio_include_path = PathBuf::from(erpc_include_dir() + "/../third_party/asio/include");
-    let erpc_include_path = PathBuf::from(erpc_include_dir());
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    let erpc_include_path = erpc_include_dir();
+    let asio_include_path =
+        PathBuf::from(erpc_include_path.clone() + "/../third_party/asio/include");
+    let erpc_include_path = PathBuf::from(erpc_include_path);
+    let erpc_config_include_path = PathBuf::from(env::var("OUT_DIR").unwrap())
+        .join("build")
+        .join("src");
     let wrapper_include_path = PathBuf::from("src");
     let mut include_path = vec![
         &asio_include_path,
         &erpc_include_path,
+        &erpc_config_include_path,
         &wrapper_include_path,
     ];
     let dpdk_include_path =
@@ -78,58 +66,140 @@ fn bindgen_erpc() -> miette::Result<()> {
     b.flag_if_supported("--std=c++14")
         .flag_if_supported("-Wno-unused-function")
         .compile("autocxx-erpc");
-    println!("cargo:rerun-if-changed=src/lib.rs");
     Ok(())
 }
 
-fn build_erpc() {
-    let dir = "./eRPC";
-    let mut program = "cmake";
-    let mut args = ["-DPERF=ON", "-DTRANSPORT=dpdk"];
-    println!(
-        "Running command: \"{} {}\" in dir: {}",
-        program,
-        args.join(" "),
-        dir
-    );
-    let ret = Command::new(program).current_dir(dir).args(args).status();
-
-    match ret.map(|status| (status.success(), status.code())) {
-        Ok((true, _)) => (),
-        Ok((false, Some(c))) => panic!("Command failed with error code {}", c),
-        Ok((false, None)) => panic!("Command got killed"),
-        Err(e) => panic!("Command failed with error: {}", e),
-    }
-
-    program = "make";
-    args = ["-j", "4"];
-    println!(
-        "Running command: \"{} {}\" in dir: {}",
-        program,
-        args.join(" "),
-        dir
-    );
-    let ret = Command::new(program).current_dir(dir).args(args).status();
-
-    match ret.map(|status| (status.success(), status.code())) {
-        Ok((true, _)) => (),
-        Ok((false, Some(c))) => panic!("Command failed with error code {}", c),
-        Ok((false, None)) => panic!("Command got killed"),
-        Err(e) => panic!("Command failed with error: {}", e),
+/// If cache is stale, remove it to avoid compilation failure.
+fn clean_up_stale_cache(cxx_compiler: String) {
+    // We don't know the cmake output path before it's configured.
+    let build_dir = format!("{}/build", env::var("OUT_DIR").unwrap());
+    let path = format!("{build_dir}/CMakeCache.txt");
+    let f = match std::fs::File::open(path) {
+        Ok(f) => BufReader::new(f),
+        // It may be an empty directory.
+        Err(_) => return,
+    };
+    let cache_stale = f.lines().any(|l| {
+        let l = l.unwrap();
+        trim_start(&l, "CMAKE_CXX_COMPILER:").map_or(false, |s| {
+            let mut splits = s.splitn(2, '=');
+            splits.next();
+            splits.next().map_or(false, |p| p != cxx_compiler)
+        })
+    });
+    // CMake can't handle compiler change well, it will invalidate cache without respecting command
+    // line settings and result in configuration failure.
+    // See https://gitlab.kitware.com/cmake/cmake/-/issues/18959.
+    if cache_stale {
+        let _ = fs::remove_dir_all(&build_dir);
     }
 }
 
-fn main() -> miette::Result<()> {
-    println!("cargo:rerun-if-changed=erpc");
+fn is_directory_empty<P: AsRef<Path>>(p: P) -> Result<bool, io::Error> {
+    let mut entries = fs::read_dir(p)?;
+    Ok(entries.next().is_none())
+}
 
-    if !Path::new("eRPC/README.md").exists() {
-        update_submodules();
+fn trim_start<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    if s.starts_with(prefix) {
+        Some(s.trim_start_matches(prefix))
+    } else {
+        None
     }
-    if !try_to_find_and_link_lib("ERPC") {
-        println!("cargo:rerun-if-changed=eRPC");
-        fail_on_empty_directory("eRPC");
-        build_erpc();
+}
+
+fn get_env(name: &str) -> Option<String> {
+    println!("cargo:rerun-if-env-changed={name}");
+    match env::var(name) {
+        Ok(s) => Some(s),
+        Err(VarError::NotPresent) => None,
+        Err(VarError::NotUnicode(s)) => {
+            panic!("unrecognize env var of {name}: {:?}", s.to_string_lossy());
+        }
     }
+}
+
+fn prepare_erpc() {
+    let modules = vec!["eRPC"];
+
+    for module in modules {
+        match is_directory_empty(module) {
+            Ok(is_empty) => {
+                if is_empty {
+                    if module == "eRPC" {
+                        update_submodules();
+                    } else {
+                        panic!(
+                            "Can't find module {}. You need to run `git submodule \
+                             update --init --recursive` first to build the project.",
+                            module
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                panic!(
+                    "Can't find module {}. You need to run `git submodule \
+                     update --init --recursive` first to build the project.",
+                    module
+                );
+            }
+        }
+    }
+}
+
+fn build_erpc(cc: &mut cc::Build) {
+    prepare_erpc();
+
+    let dst = {
+        let mut config = CmakeConfig::new("eRPC");
+        config.define("PERF", "ON");
+        config.define("TRANSPORT", "dpdk");
+
+        let cxx_compiler = if let Some(val) = get_env("CXX") {
+            config.define("CMAKE_CXX_COMPILER", val.clone());
+            val
+        } else {
+            format!("{}", cc.get_compiler().path().display())
+        };
+        clean_up_stale_cache(cxx_compiler);
+        config.uses_cxx11().build()
+    };
+
+    let build_dir = format!("{}/build", dst.display());
+    for e in WalkDir::new(&build_dir) {
+        let e = e.unwrap();
+        if e.file_name().to_string_lossy().ends_with(".a") {
+            println!(
+                "cargo:rustc-link-search=native={}",
+                e.path().parent().unwrap().display()
+            );
+        }
+    }
+    println!(
+        "cargo:rustc-link-search=native={}",
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("eRPC")
+            .join("build")
+            .to_str()
+            .unwrap()
+    );
+
+    let libs = &["erpc"];
+    for l in libs {
+        println!("cargo:rustc-link-lib=static={}", l);
+    }
+    cc.include("eRPC/src");
+}
+
+fn main() -> miette::Result<()> {
+    println!("cargo:rerun-if-changed=src/erpc_wrapper.h");
+    println!("cargo:rerun-if-changed=eRPC");
+
+    let mut cc = cc::Build::new();
+
+    build_erpc(&mut cc);
+
     bindgen_erpc()?;
 
     Ok(())
