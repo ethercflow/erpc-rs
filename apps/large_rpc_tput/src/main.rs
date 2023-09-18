@@ -3,6 +3,8 @@
 #![feature(sort_floats)]
 #![feature(maybe_uninit_uninit_array)]
 
+extern crate core_affinity;
+
 mod cli;
 mod context;
 mod profile_incast;
@@ -381,15 +383,20 @@ fn main() -> Result<(), Error> {
     };
     let nexus = Arc::new(Mutex::new(nexus));
     let args = Arc::new(args);
+    let core_ids = core_affinity::get_core_ids().unwrap();
     let mut handles = Vec::with_capacity(num_threads);
+    #[allow(clippy::needless_range_loop)]
     for i in 0..num_threads {
+        let cid = core_ids[i];
         let args = args.clone();
         let nexus = nexus.clone();
         let ctrl_c_pressed = ctrl_c_pressed.clone();
         let handle = thread::spawn(move || {
-            thread_func(i, args, nexus, ctrl_c_pressed);
+            let res = core_affinity::set_for_current(cid);
+            if res {
+                thread_func(i, args, nexus, ctrl_c_pressed);
+            }
         });
-        // TODO: bind_to_core
         handles.push(handle);
     }
     for handle in handles.drain(..) {
