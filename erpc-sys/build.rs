@@ -1,6 +1,11 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+extern crate regex;
+
 use cmake::Config as CmakeConfig;
+use pkg_config::Config as PkgConfig;
+use regex::Regex;
+use std::collections::HashSet;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::Path;
@@ -15,7 +20,7 @@ use walkdir::WalkDir;
 fn update_submodules() {
     let program = "git";
     let dir = "../";
-    let args = ["submodule", "update", "--init"];
+    let args = ["submodule", "update", "--init", "--recursive"];
     println!(
         "Running command: \"{} {}\" in dir: {}",
         program,
@@ -23,7 +28,6 @@ fn update_submodules() {
         dir
     );
     let ret = Command::new(program).current_dir(dir).args(args).status();
-
     match ret.map(|status| (status.success(), status.code())) {
         Ok((true, _)) => (),
         Ok((false, Some(c))) => panic!("Command failed with error code {}", c),
@@ -57,14 +61,15 @@ fn bindgen_erpc() -> miette::Result<()> {
         &erpc_config_include_path,
         &wrapper_include_path,
     ];
-    let dpdk_include_path =
-        std::env::var("RTE_SDK").map(|r| PathBuf::from(r + "/build/install/usr/local/include"));
-    if let Ok(dpdk_include_path) = dpdk_include_path.as_ref() {
-        include_path.push(dpdk_include_path);
-    }
+    let dpdk_include_path = PathBuf::from(format!(
+        "{}/dpdk/build/install/usr/local/include",
+        env::var("OUT_DIR").unwrap()
+    ));
+    include_path.push(&dpdk_include_path);
     let mut b = autocxx_build::Builder::new("src/lib.rs", include_path).build()?;
     b.flag_if_supported("--std=c++14")
         .flag_if_supported("-Wno-unused-function")
+        .static_flag(true)
         .compile("autocxx-erpc");
     Ok(())
 }
@@ -119,42 +124,36 @@ fn get_env(name: &str) -> Option<String> {
     }
 }
 
-fn prepare_erpc() {
-    let modules = vec!["eRPC"];
-
-    for module in modules {
-        match is_directory_empty(module) {
-            Ok(is_empty) => {
-                if is_empty {
-                    if module == "eRPC" {
-                        update_submodules();
-                    } else {
-                        panic!(
-                            "Can't find module {}. You need to run `git submodule \
-                             update --init --recursive` first to build the project.",
-                            module
-                        );
-                    }
-                }
+fn prepare_module(module: &str) {
+    match is_directory_empty(module) {
+        Ok(is_empty) => {
+            if is_empty {
+                update_submodules();
             }
-            Err(_) => {
-                panic!(
-                    "Can't find module {}. You need to run `git submodule \
+        }
+        Err(_) => {
+            panic!(
+                "Can't find module {}. You need to run `git submodule \
                      update --init --recursive` first to build the project.",
-                    module
-                );
-            }
+                module
+            );
         }
     }
 }
 
-fn build_erpc(cc: &mut cc::Build) {
-    prepare_erpc();
+fn build_rdma(cc: &mut cc::Build) {
+    prepare_module("rdma-core");
 
     let dst = {
-        let mut config = CmakeConfig::new("eRPC");
-        config.define("PERF", "ON");
-        config.define("TRANSPORT", "dpdk");
+        let mut config = CmakeConfig::new("rdma-core");
+        config.define("ENABLE_STATIC", "ON");
+        config.define("NO_PYVERBS", "1");
+        config.define("ENABLE_RESOLVE_NEIGH", "0");
+        config.define("CMAKE_BUILD_TYPE", "Release");
+        config.define(
+            "CMAKE_INSTALL_PREFIX",
+            format!("{}/r", env::var("OUT_DIR").unwrap()),
+        );
 
         let cxx_compiler = if let Some(val) = get_env("CXX") {
             config.define("CMAKE_CXX_COMPILER", val.clone());
@@ -163,6 +162,168 @@ fn build_erpc(cc: &mut cc::Build) {
             format!("{}", cc.get_compiler().path().display())
         };
         clean_up_stale_cache(cxx_compiler);
+        config.uses_cxx11().build()
+    };
+    let build_dir = format!("{}/build", dst.display());
+    let lib_dir = build_dir + "/lib";
+    for e in WalkDir::new(&lib_dir) {
+        let e = e.unwrap();
+        if e.file_name().to_string_lossy().ends_with(".a") {
+            println!(
+                "cargo:rustc-link-search=native={}",
+                e.path().parent().unwrap().display()
+            );
+        }
+    }
+    cc.include("build_dir/include");
+}
+
+fn build_dpdk() {
+    prepare_module("dpdk");
+
+    let build_dir = format!("{}/build", env::var("OUT_DIR").unwrap());
+    let c_include_path = build_dir.clone() + "/../r/include";
+    let library_path = build_dir.clone() + "/../r/lib";
+    if fs::metadata("./dpdk/build/build.ninja").is_err() {
+        let program = "meson";
+        let args = [
+            "-Dlibdir=lib",
+            "-Dincludedir=include",
+            "-Dexamples=",
+            "-Denable_kmods=false",
+            "-Dtests=false",
+            "-Ddisable_drivers=raw/*,crypto/*,baseband/*,dma/*",
+            "build",
+        ];
+        let ret = Command::new(program)
+            .env("C_INCLUDE_PATH", &c_include_path)
+            .env("LIBRARY_PATH", &library_path)
+            .current_dir("./dpdk")
+            .args(args)
+            .status();
+        match ret.map(|status| (status.success(), status.code())) {
+            Ok((true, _)) => (),
+            Ok((false, Some(c))) => panic!("Command failed with error code {}", c),
+            Ok((false, None)) => panic!("Command got killed"),
+            Err(e) => panic!("Command failed with error: {}", e),
+        }
+    }
+
+    let program = "ninja";
+    let args = ["install"];
+    let ret = Command::new(program)
+        .env("C_INCLUDE_PATH", &c_include_path)
+        .env("LIBRARY_PATH", &library_path)
+        .env("DESTDIR", build_dir + "/../dpdk/build/install")
+        .current_dir("./dpdk/build")
+        .args(args)
+        .status();
+    match ret.map(|status| (status.success(), status.code())) {
+        Ok((true, _)) => (),
+        Ok((false, Some(c))) => panic!("Command failed with error code {}", c),
+        Ok((false, None)) => panic!("Command got killed"),
+        Err(e) => panic!("Command failed with error: {}", e),
+    }
+}
+
+fn link_with_rdma(dst: &Path) {
+    let mut path = format!("{}/r/lib/pkgconfig", dst.display());
+    if is_directory_empty(&path).is_err() {
+        path = format!("{}/r/lib64/pkgconfig", dst.display());
+        if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
+            panic!("r's pkgconfig path {} not correct", path);
+        }
+    }
+    env::set_var("PKG_CONFIG_PATH", &path);
+    println!(
+        "cargo:rustc-link-search=native={}",
+        PathBuf::from(path).parent().unwrap().display()
+    );
+    let mut cfg = PkgConfig::new();
+    cfg.print_system_cflags(false)
+        .print_system_libs(false)
+        .env_metadata(false)
+        .cargo_metadata(false)
+        .statik(true);
+    let rdma = cfg.probe("libibverbs").unwrap();
+    let rdma_libs: HashSet<_> = rdma.libs.iter().cloned().collect();
+    for l in rdma_libs.iter() {
+        if l != "pthread" {
+            println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={l}");
+        }
+    }
+}
+
+fn link_with_dpdk(dst: &Path) {
+    let mut path = format!(
+        "{}/dpdk/build/install/usr/local/lib/pkgconfig",
+        dst.display()
+    );
+    if is_directory_empty(&path).is_err() {
+        path = format!(
+            "{}/dpdk/build/install/usr/local/lib/pkgconfig",
+            dst.display()
+        );
+        if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
+            panic!("dpdk's pkgconfig path {} not correct", path);
+        }
+    }
+    env::set_var("PKG_CONFIG_PATH", &path);
+    println!(
+        "cargo:rustc-link-search=native={}",
+        PathBuf::from(path).parent().unwrap().display()
+    );
+    let mut cfg = PkgConfig::new();
+    cfg.print_system_cflags(false)
+        .print_system_libs(false)
+        .env_metadata(false)
+        .cargo_metadata(false)
+        .statik(true);
+    let dpdk = cfg.probe("libdpdk").unwrap();
+    let dpdk_libs: HashSet<_> = dpdk.libs.iter().cloned().collect();
+    let lib_name_format = Regex::new(r"lib(.*)\.(a)").unwrap();
+    let mut dpdk_link_names = vec![];
+    for l in dpdk_libs.iter() {
+        if let Some(l) = l.strip_prefix(":") {
+            if let Some(capture) = lib_name_format.captures(l) {
+                let link_name = &capture[1];
+                dpdk_link_names.push(link_name.to_string());
+            }
+        }
+    }
+    for l in dpdk_link_names {
+        println!("dddd: {:?}", l);
+        println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={l}");
+    }
+}
+
+fn build_erpc(cc: &mut cc::Build) {
+    prepare_module("eRPC");
+
+    let dst = {
+        let mut config = CmakeConfig::new("eRPC");
+        config.define("PERF", "ON");
+        config.define("TRANSPORT", "dpdk");
+        config.env("RTE_SDK", format!("{}/dpdk", env::var("OUT_DIR").unwrap()));
+
+        let cxx_compiler = if let Some(val) = get_env("CXX") {
+            config.define("CMAKE_CXX_COMPILER", val.clone());
+            val
+        } else {
+            format!("{}", cc.get_compiler().path().display())
+        };
+        clean_up_stale_cache(cxx_compiler);
+
+        let out_dir = format!("{}", env::var("OUT_DIR").unwrap());
+        let mut path = out_dir.clone() + "/r/lib";
+        if is_directory_empty(&path).is_err() {
+            path = out_dir.clone() + "/r/lib64";
+            if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
+                panic!("rdma core's lib path {} not correct", path);
+            }
+        }
+        config.env("LIBRARY_PATH", path);
+
         config.uses_cxx11().build()
     };
 
@@ -185,10 +346,22 @@ fn build_erpc(cc: &mut cc::Build) {
             .unwrap()
     );
 
+    link_with_rdma(&dst);
+    link_with_dpdk(&dst);
+
     let libs = &["erpc"];
     for l in libs {
-        println!("cargo:rustc-link-lib=static={}", l);
+        println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={}", l);
     }
+    ["z", "jansson", "bsd", "numa", "pthread"].map(|lib| {
+        println!("cargo:rustc-link-lib=dylib={}", lib);
+    });
+    if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
+        if os_release.contains("Ubuntu") {
+            println!("cargo:rustc-link-lib=dylib=atomic");
+        }
+    }
+
     cc.include("eRPC/src");
 }
 
@@ -198,6 +371,8 @@ fn main() -> miette::Result<()> {
 
     let mut cc = cc::Build::new();
 
+    build_rdma(&mut cc);
+    build_dpdk();
     build_erpc(&mut cc);
 
     bindgen_erpc()?;

@@ -1,4 +1,11 @@
 [submodule "erpc-sys/erpc"]
 	path = erpc-sys/eRPC
-	url = https://github.com/ethercflow/erpc.git
+	url = https://github.com/iomesh/erpc.git
 	branch = dev
+[submodule "erpc-sys/dpdk"]
+	path = erpc-sys/dpdk
+	url = https://github.com/DPDK/dpdk.git
+[submodule "erpc-sys/rdma-core"]
+	path = erpc-sys/rdma-core
+	url = https://github.com/linux-rdma/rdma-core
+	branch = stable-v40

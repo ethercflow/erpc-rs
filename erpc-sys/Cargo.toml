@@ -16,4 +16,6 @@ autocxx-build = "0.26.0"
 cc = "1.0"
 cmake = "0.1"
 miette = { version = "5.10.0", features = ["fancy"] }
+pkg-config = "0.3.27"
+regex = "1.9.5"
 walkdir = "2.4.0"
