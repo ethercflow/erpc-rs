@@ -1,0 +1,15 @@
+[package]
+name = "erpc-build"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes.workspace = true
+prost.workspace = true
+prost-build = { version = "0.12" }
+prost-types = { version = "0.12" }
+derive-new = { version = "0.5" }
+tempfile = { version = "3.8" }
+
+[[bin]]
+name = "erpc_build"
