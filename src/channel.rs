@@ -136,7 +136,7 @@ impl Channel {
                 tx: self.tx.clone(),
             });
         }
-        return None;
+        None
     }
 }
 

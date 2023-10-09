@@ -136,6 +136,6 @@ impl Environment {
         if idx < self.chs.len() {
             return Some(self.chs[idx].clone());
         }
-        return None;
+        None
     }
 }
