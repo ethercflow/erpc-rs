@@ -1,6 +1,15 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+#![feature(get_mut_unchecked)]
+
+mod buf;
+mod call;
+mod channel;
+mod client;
+mod codec;
+mod env;
 mod error;
+mod method;
 mod msg_buffer;
 mod nexus;
 mod req_handle;
@@ -10,6 +19,16 @@ mod timing_wheel;
 
 pub mod prelude {
     //! A "prelude" for crates using `erpc-rs`.
+    #[doc(no_inline)]
+    pub use crate::buf::MsgBufferReader;
+    #[doc(no_inline)]
+    pub use crate::channel::{Channel, ChannelBuilder};
+    #[doc(no_inline)]
+    pub use crate::client::Client;
+    #[doc(no_inline)]
+    pub use crate::codec::*;
+    #[doc(no_inline)]
+    pub use crate::env::{EnvBuilder, Environment};
     #[doc(no_inline)]
     pub use crate::msg_buffer::MsgBuffer;
     #[doc(no_inline)]
