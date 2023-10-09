@@ -22,6 +22,11 @@ impl MsgBuffer {
     }
 
     #[inline]
+    pub fn get_max_data_size(&self) -> usize {
+        self.as_inner().get_max_data_size()
+    }
+
+    #[inline]
     pub fn resize(&mut self, new_data_size: usize) {
         unsafe {
             erpc::Rpc::resize_msg_buffer(self.as_inner_mut().get_unchecked_mut(), new_data_size);
