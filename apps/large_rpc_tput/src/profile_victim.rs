@@ -40,10 +40,12 @@ pub fn connect_sessions_func_victim(
         c.base.thread_id, server_process_id, rem_tid
     );
 
-    c.base.session_num_vec[0] = unsafe { c.base.rpc.assume_init_mut() }.create_session(
-        (*get_uri_for_process(server_process_id)).to_str().unwrap(),
-        rem_tid,
-    );
+    c.base.session_num_vec[0] = unsafe { c.base.rpc.assume_init_mut() }
+        .create_session(
+            (*get_uri_for_process(server_process_id)).to_str().unwrap(),
+            rem_tid,
+        )
+        .unwrap();
     if i32::from(c.base.session_num_vec[0]) < 0 {
         panic!("create_session failed.");
     }

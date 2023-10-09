@@ -26,8 +26,8 @@ fn main() {
     let client_uri = K_CLIENT_HOST_NAME.to_owned() + ":" + K_UDP_PORT;
     let mut nexus = Nexus::new(&client_uri, 0);
     let mut rpc = Rpc::new(&mut nexus, None, 0, Some(sm_handler), 0);
-    let server_url = K_SERVER_HOST_NAME.to_owned() + ":" + K_UDP_PORT;
-    let session_num = rpc.create_session(&server_url, 0);
+    let server_uri = K_SERVER_HOST_NAME.to_owned() + ":" + K_UDP_PORT;
+    let session_num = rpc.create_session(&server_uri, 0).unwrap();
     loop {
         if rpc.is_connected(session_num) {
             break;

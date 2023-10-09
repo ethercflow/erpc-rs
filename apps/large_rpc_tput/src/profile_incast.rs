@@ -31,7 +31,8 @@ pub fn connect_sessions_func_incast(
     );
 
     c.base.session_num_vec[0] = unsafe { c.base.rpc.assume_init_mut() }
-        .create_session((*get_uri_for_process(0)).to_str().unwrap(), rem_tid);
+        .create_session((*get_uri_for_process(0)).to_str().unwrap(), rem_tid)
+        .unwrap();
     if i32::from(c.base.session_num_vec[0]) < 0 {
         panic!("create_session() failed");
     }

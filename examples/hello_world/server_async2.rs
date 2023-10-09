@@ -110,10 +110,9 @@ async fn main() -> Result<()> {
             let metadata = file.metadata().await.unwrap();
             let resp_size = metadata.len() as usize;
             let msg_buf = req.rpc.alloc_msg_buffer_or_die(resp_size);
-            // FIXME: currently it won't write data to msg_buf
-            let mut msg_buf_vec =
-                unsafe { slice::from_raw_parts(msg_buf.get_inner_buf(), resp_size).to_vec() };
-            file.read_to_end(&mut msg_buf_vec).await.unwrap();
+            let msg_buf_slice =
+                unsafe { slice::from_raw_parts_mut(msg_buf.get_inner_buf(), resp_size) };
+            file.read_exact(msg_buf_slice).await.unwrap();
             tx1.send(Resp {
                 req_handle: req.req_handle,
                 msg_buf,
