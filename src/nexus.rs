@@ -1,13 +1,12 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use crate::error::{Error, Result};
 use erpc_sys::{
     c_void,
     erpc::{self, ReqHandle as RawReqHandle},
-    UniquePtr, WithinUniquePtr,
+    UniquePtr, WithinUniquePtr, EEXIST, EINVAL, EPERM,
 };
 use std::pin::Pin;
-
-use anyhow::Result;
 
 pub type ReqHandler = extern "C" fn(*mut RawReqHandle, *mut c_void);
 
@@ -28,14 +27,22 @@ impl Nexus {
 
     #[inline]
     pub fn register_req_func(&mut self, req_type: u8, req_func: ReqHandler) -> Result<()> {
-        unsafe {
+        let res = 0 - i32::from(unsafe {
             self.as_inner_mut().register_req_func(
                 req_type,
                 req_func as *mut c_void,
                 erpc::ReqFuncType::kForeground,
             )
-        };
-        Ok(())
+        });
+        match res as u32 {
+            0 => Ok(()),
+            EPERM => Err(Error::Internal("registration not permitted".into())),
+            EEXIST => Err(Error::Internal(format!(
+                "handler for {req_type} already exists"
+            ))),
+            EINVAL => Err(Error::Internal("invalid handler".into())),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]

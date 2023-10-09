@@ -1,13 +1,17 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
 use crate::{
-    msg_buffer::MsgBuffer, nexus::Nexus, req_handle::ReqHandle, timely::Timely,
+    error::{Error, Result},
+    msg_buffer::MsgBuffer,
+    nexus::Nexus,
+    req_handle::ReqHandle,
+    timely::Timely,
     timing_wheel::TimingWheel,
 };
 use erpc_sys::{
     c_int, c_void,
     erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
-    UniquePtr, WithinUniquePtr,
+    UniquePtr, WithinUniquePtr, EINVAL, ENOMEM, EPERM,
 };
 use std::{pin::Pin, ptr};
 
@@ -49,8 +53,15 @@ impl Rpc {
     }
 
     #[inline]
-    pub fn create_session(&mut self, remote_uri: &str, rem_rpc_id: u8) -> c_int {
-        self.as_inner_mut().create_session(remote_uri, rem_rpc_id)
+    pub fn create_session(&mut self, remote_uri: &str, rem_rpc_id: u8) -> Result<c_int> {
+        let sid = self.as_inner_mut().create_session(remote_uri, rem_rpc_id);
+        match (0 - i32::from(sid)) as u32 {
+            0 => Ok(sid),
+            EPERM => Err(Error::Internal("cannot create session from a thread other than the one that created this Rpc object".into())),
+            EINVAL => Err(Error::Internal("invalid remote hostname or remote Rpc is same as local".into())),
+            ENOMEM => Err(Error::Internal("ring buffers exhausted".into())),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
