@@ -21,4 +21,4 @@ erpc-sys = { path = "erpc-sys", version = "0.1.0" }
 prost.workspace = true
 bytes.workspace = true
 num_cpus = "1.16.0"
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+async-channel = "1.9.0"
