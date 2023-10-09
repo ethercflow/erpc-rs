@@ -45,7 +45,7 @@ fn erpc_include_dir() -> String {
         .to_string()
 }
 
-fn bindgen_erpc() -> miette::Result<()> {
+fn bindgen_erpc(use_sys_dpdk: bool) -> miette::Result<()> {
     println!("cargo:rerun-if-changed=src/lib.rs");
     let erpc_include_path = erpc_include_dir();
     let asio_include_path =
@@ -61,10 +61,14 @@ fn bindgen_erpc() -> miette::Result<()> {
         &erpc_config_include_path,
         &wrapper_include_path,
     ];
-    let dpdk_include_path = PathBuf::from(format!(
-        "{}/dpdk/build/install/usr/local/include",
-        env::var("OUT_DIR").unwrap()
-    ));
+    let dpdk_include_path = PathBuf::from(if use_sys_dpdk {
+        get_env("RTE_INCLUDE_PATH").unwrap()
+    } else {
+        format!(
+            "{}/dpdk/build/install/usr/local/include",
+            env::var("OUT_DIR").unwrap()
+        )
+    });
     include_path.push(&dpdk_include_path);
     let mut b = autocxx_build::Builder::new("src/lib.rs", include_path).build()?;
     b.flag_if_supported("--std=c++14")
@@ -134,7 +138,7 @@ fn prepare_module(module: &str) {
         Err(_) => {
             panic!(
                 "Can't find module {}. You need to run `git submodule \
-                     update --init --recursive` first to build the project.",
+                 update --init --recursive` first to build the project.",
                 module
             );
         }
@@ -226,14 +230,19 @@ fn build_dpdk() {
     }
 }
 
-fn link_with_rdma(dst: &Path) {
-    let mut path = format!("{}/r/lib/pkgconfig", dst.display());
-    if is_directory_empty(&path).is_err() {
-        path = format!("{}/r/lib64/pkgconfig", dst.display());
-        if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
-            panic!("r's pkgconfig path {} not correct", path);
+fn link_with_rdma(dst: &Path, use_sys: bool) {
+    let path = if use_sys {
+        get_env("RDMA_PKG_CONFIG").unwrap()
+    } else {
+        let mut path = format!("{}/r/lib/pkgconfig", dst.display());
+        if is_directory_empty(&path).is_err() {
+            path = format!("{}/r/lib64/pkgconfig", dst.display());
+            if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
+                panic!("r's pkgconfig path {} not correct", path);
+            }
         }
-    }
+        path
+    };
     env::set_var("PKG_CONFIG_PATH", &path);
     println!(
         "cargo:rustc-link-search=native={}",
@@ -254,20 +263,19 @@ fn link_with_rdma(dst: &Path) {
     }
 }
 
-fn link_with_dpdk(dst: &Path) {
-    let mut path = format!(
-        "{}/dpdk/build/install/usr/local/lib/pkgconfig",
-        dst.display()
-    );
-    if is_directory_empty(&path).is_err() {
-        path = format!(
+fn link_with_dpdk(dst: &Path, use_sys: bool) {
+    let path = if use_sys {
+        get_env("RTE_PKG_CONFIG").unwrap()
+    } else {
+        let path = format!(
             "{}/dpdk/build/install/usr/local/lib/pkgconfig",
             dst.display()
         );
         if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
             panic!("dpdk's pkgconfig path {} not correct", path);
         }
-    }
+        path
+    };
     env::set_var("PKG_CONFIG_PATH", &path);
     println!(
         "cargo:rustc-link-search=native={}",
@@ -284,7 +292,7 @@ fn link_with_dpdk(dst: &Path) {
     let lib_name_format = Regex::new(r"lib(.*)\.(a)").unwrap();
     let mut dpdk_link_names = vec![];
     for l in dpdk_libs.iter() {
-        if let Some(l) = l.strip_prefix(":") {
+        if let Some(l) = l.strip_prefix(':') {
             if let Some(capture) = lib_name_format.captures(l) {
                 let link_name = &capture[1];
                 dpdk_link_names.push(link_name.to_string());
@@ -292,19 +300,25 @@ fn link_with_dpdk(dst: &Path) {
         }
     }
     for l in dpdk_link_names {
-        println!("dddd: {:?}", l);
         println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={l}");
     }
 }
 
-fn build_erpc(cc: &mut cc::Build) {
+fn build_erpc(cc: &mut cc::Build, use_sys_rdma: bool, use_sys_dpdk: bool) {
     prepare_module("eRPC");
 
     let dst = {
         let mut config = CmakeConfig::new("eRPC");
         config.define("PERF", "ON");
         config.define("TRANSPORT", "dpdk");
-        config.env("RTE_SDK", format!("{}/dpdk", env::var("OUT_DIR").unwrap()));
+        config.env(
+            "RTE_SDK",
+            if use_sys_dpdk {
+                get_env("RTE_SDK").unwrap()
+            } else {
+                format!("{}/dpdk", env::var("OUT_DIR").unwrap())
+            },
+        );
 
         let cxx_compiler = if let Some(val) = get_env("CXX") {
             config.define("CMAKE_CXX_COMPILER", val.clone());
@@ -314,21 +328,29 @@ fn build_erpc(cc: &mut cc::Build) {
         };
         clean_up_stale_cache(cxx_compiler);
 
-        let out_dir = format!("{}", env::var("OUT_DIR").unwrap());
-        let mut path = out_dir.clone() + "/r/lib";
-        if is_directory_empty(&path).is_err() {
-            path = out_dir.clone() + "/r/lib64";
-            if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
-                panic!("rdma core's lib path {} not correct", path);
+        if use_sys_rdma {
+            config.env("LIBRARY_PATH", get_env("RDMA_PKG_CONFIG").unwrap() + "/../");
+        } else {
+            let out_dir = env::var("OUT_DIR").unwrap().to_string();
+            let mut path = out_dir.clone() + "/r/lib";
+            if is_directory_empty(&path).is_err() {
+                path = out_dir.clone() + "/r/lib64";
+                if is_directory_empty(&path).is_err() || is_directory_empty(&path).unwrap() {
+                    panic!("rdma core's lib path {} not correct", path);
+                }
             }
+            config.env("LIBRARY_PATH", path);
         }
-        config.env("LIBRARY_PATH", path);
 
         config.uses_cxx11().build()
     };
 
-    let build_dir = format!("{}/build", dst.display());
-    for e in WalkDir::new(&build_dir) {
+    let rdma_lib_dir = if use_sys_rdma {
+        get_env("RDMA_PKG_CONFIG").unwrap() + "/../"
+    } else {
+        format!("{}/build", dst.display())
+    };
+    for e in WalkDir::new(&rdma_lib_dir) {
         let e = e.unwrap();
         if e.file_name().to_string_lossy().ends_with(".a") {
             println!(
@@ -346,14 +368,14 @@ fn build_erpc(cc: &mut cc::Build) {
             .unwrap()
     );
 
-    link_with_rdma(&dst);
-    link_with_dpdk(&dst);
+    link_with_rdma(&dst, use_sys_rdma);
+    link_with_dpdk(&dst, use_sys_dpdk);
 
     let libs = &["erpc"];
     for l in libs {
         println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={}", l);
     }
-    ["z", "jansson", "bsd", "numa", "pthread"].map(|lib| {
+    ["z", "jansson", "bsd", "numa", "pthread", "archive"].map(|lib| {
         println!("cargo:rustc-link-lib=dylib={}", lib);
     });
     if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
@@ -369,13 +391,23 @@ fn main() -> miette::Result<()> {
     println!("cargo:rerun-if-changed=src/erpc_wrapper.h");
     println!("cargo:rerun-if-changed=eRPC");
 
+    let mut use_sys_rdma = false;
+    let mut use_sys_dpdk = false;
     let mut cc = cc::Build::new();
 
-    build_rdma(&mut cc);
-    build_dpdk();
-    build_erpc(&mut cc);
+    if get_env("RDMA_PKG_CONFIG").is_none() {
+        build_rdma(&mut cc);
+    } else {
+        use_sys_rdma = true;
+    }
+    if get_env("RTE_SDK").is_none() {
+        build_dpdk();
+    } else {
+        use_sys_dpdk = true;
+    }
+    build_erpc(&mut cc, use_sys_rdma, use_sys_dpdk);
 
-    bindgen_erpc()?;
+    bindgen_erpc(use_sys_dpdk)?;
 
     Ok(())
 }
