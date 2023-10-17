@@ -1,6 +1,7 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
 use std::{
+    boxed::Box,
     fmt::Debug,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -8,14 +9,14 @@ use std::{
     },
 };
 
-use async_channel::{unbounded, Sender, TryRecvError};
+use async_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
     erpc::{SmErrType, SmEventType},
 };
 
 use crate::{
-    call::RpcCall, env::Environment, error::Result, nexus::Nexus, rpc::Rpc,
+    buf::MsgBufferReader, call::RpcCall, env::Environment, error::Result, nexus::Nexus, rpc::Rpc,
     server::ServerRpcContext,
 };
 
@@ -124,10 +125,13 @@ impl Channel {
     pub fn pick_subchan(&mut self) -> Option<SubChannel> {
         let idx = self.assigned_idx.fetch_add(1, Ordering::Relaxed);
         if idx < self.subchans.len() {
+            let (tx, rx) = bounded::<MsgBufferReader>(1);
             return Some(SubChannel {
                 id: self.subchans[idx],
                 rpc: self.rpc.clone(),
                 tx: self.tx.clone(),
+                mbr_tx: Box::into_raw(Box::new(tx)),
+                mbr_rx: rx,
             });
         }
         None
@@ -139,4 +143,6 @@ pub struct SubChannel {
     pub id: c_int,
     pub rpc: Arc<Rpc>,
     pub tx: Sender<RpcCall>,
+    pub mbr_tx: *mut Sender<MsgBufferReader>,
+    pub mbr_rx: Receiver<MsgBufferReader>,
 }

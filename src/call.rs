@@ -1,8 +1,6 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use std::boxed::Box;
-
-use async_channel::{bounded, Sender};
+use async_channel::Sender;
 use erpc_sys::{c_int, c_void};
 
 use crate::{
@@ -37,7 +35,7 @@ pub struct Call {
     pub req_msgbuf: &'static mut MsgBuffer,
     pub resp_msgbuf: &'static mut MsgBuffer,
     pub cb: ContFunc,
-    pub tx: Sender<MsgBufferReader>,
+    pub tx: *mut Sender<MsgBufferReader>,
 }
 
 unsafe impl Send for Call {}
@@ -51,8 +49,6 @@ impl Call {
         resp_msgbuf: &'static mut MsgBuffer,
         cb: ContFunc,
     ) -> Result<Resp> {
-        // FIXME: channel should be provided by the client instead of temporarily creating it each time
-        let (tx, rx) = bounded::<MsgBufferReader>(1);
         (method.req_ser())(req, req_msgbuf)?;
         subchan
             .tx
@@ -62,11 +58,11 @@ impl Call {
                 req_msgbuf,
                 resp_msgbuf,
                 cb,
-                tx,
+                tx: subchan.mbr_tx,
             }))
             .await
             .unwrap();
-        let resp = rx.recv().await.unwrap();
+        let resp = subchan.mbr_rx.recv().await.unwrap();
         (method.resp_de())(resp)
     }
 
@@ -77,7 +73,7 @@ impl Call {
             self.req_msgbuf,
             self.resp_msgbuf,
             self.cb,
-            Some(Box::into_raw(Box::new(self.tx)) as *mut c_void),
+            Some(self.tx as *mut c_void),
         );
     }
 }
