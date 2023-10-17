@@ -11,6 +11,8 @@ include_cpp! {
     generate!("ENOMEM")
     generate!("EEXIST")
     generate!("EINVAL")
+    generate!("EBUSY")
+    generate!("EALREADY")
     generate!("erpc::get_uri_for_process")
     generate!("erpc::kInvalidBgETid")
     generate!("erpc::kSessionCredits")

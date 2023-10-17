@@ -375,7 +375,7 @@ fn build_erpc(cc: &mut cc::Build, use_sys_rdma: bool, use_sys_dpdk: bool) {
     for l in libs {
         println!("cargo:rustc-link-lib=static:+whole-archive,-bundle={}", l);
     }
-    ["z", "jansson", "bsd", "numa", "pthread", "archive"].map(|lib| {
+    ["z", "jansson", "bsd", "numa", "pthread"].map(|lib| {
         println!("cargo:rustc-link-lib=dylib={}", lib);
     });
     if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {

@@ -11,7 +11,7 @@ use crate::{
 use erpc_sys::{
     c_int, c_void,
     erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
-    UniquePtr, WithinUniquePtr, EINVAL, ENOMEM, EPERM,
+    UniquePtr, WithinUniquePtr, EALREADY, EBUSY, EINVAL, ENOMEM, EPERM,
 };
 use std::{pin::Pin, ptr};
 
@@ -55,11 +55,25 @@ impl Rpc {
     #[inline]
     pub fn create_session(&mut self, remote_uri: &str, rem_rpc_id: u8) -> Result<c_int> {
         let sid = self.as_inner_mut().create_session(remote_uri, rem_rpc_id);
+        if i32::from(sid) >= 0 {
+            return Ok(sid);
+        }
         match (0 - i32::from(sid)) as u32 {
-            0 => Ok(sid),
-            EPERM => Err(Error::Internal("cannot create session from a thread other than the one that created this Rpc object".into())),
+            EPERM => Err(Error::Internal("can't create session from a thread other than the one that created this Rpc object".into())),
             EINVAL => Err(Error::Internal("invalid remote hostname or remote Rpc is same as local".into())),
             ENOMEM => Err(Error::Internal("ring buffers exhausted".into())),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn destroy_session(&mut self, session_num: c_int) -> Result<()> {
+        let res = self.as_inner_mut().destroy_session(session_num);
+        match (0 - i32::from(res)) as u32 {
+            EPERM => Err(Error::Internal("can't destroy session from a thread other than the one that created this Rpc object or session already destroyed or session connection in progress.".into())),
+            EINVAL => Err(Error::Internal("invalid session number or it's a server session.".into())),
+            EBUSY => Err(Error::Internal("session has pending RPC requests.".into())),
+            EALREADY => Err(Error::Internal("session disconnection in progress.".into())),
             _ => unreachable!(),
         }
     }
