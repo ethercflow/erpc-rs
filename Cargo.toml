@@ -10,7 +10,7 @@ categories = [ "RPC" ]
 
 [workspace]
 members = ["erpc-sys", "erpc-build"]
-exclude = ["apps/large_rpc_tput", "examples/hello_world"]
+exclude = ["apps/large_rpc_tput", "examples/hello_world", "examples/hello_world_pb"]
 
 [workspace.dependencies]
 prost = { version = "0.12"}
@@ -22,3 +22,4 @@ prost.workspace = true
 bytes.workspace = true
 num_cpus = "1.16.0"
 async-channel = "1.9.0"
+tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread", "signal", "sync"] }

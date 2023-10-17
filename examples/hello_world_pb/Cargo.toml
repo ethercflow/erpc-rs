@@ -1,0 +1,25 @@
+[package]
+name = "hello_world_pb"
+version = "0.1.0"
+authors = [ "Wenbo Zhang <wenbo.zhang@iomesh.com>" ]
+edition = "2021"
+
+[dependencies]
+erpc-rs = { path = "../..", version = "0.1.0" }
+tokio = { version = "1.32.0", features = ["full"] }
+anyhow = "1.0.75"
+async-channel = "1.9.0"
+prost = "0.12"
+async-trait = "0.1.73"
+
+[[bin]]
+name = "hello_client"
+path = "client.rs"
+
+[[bin]]
+name = "hello_server"
+path = "server.rs"
+
+[build-dependencies]
+prost-build = "0.12"
+erpc-build = { path = "../../erpc-build", version = "0.1.0" }
