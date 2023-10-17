@@ -1,7 +1,8 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use erpc_sys::erpc::MsgBuffer as RawMsgBuffer;
 use std::io::{self, BufRead, Read};
+
+use erpc_sys::erpc::MsgBuffer as RawMsgBuffer;
 
 #[repr(C)]
 pub struct MsgBufferReader {
