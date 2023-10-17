@@ -70,7 +70,7 @@ pub fn to_snake_case(name: &str) -> String {
 }
 
 pub fn fq_erpc(item: &str) -> String {
-    format!("::erpc::{item}")
+    format!("::erpc_rs::prelude::{item}")
 }
 
 #[cfg(test)]

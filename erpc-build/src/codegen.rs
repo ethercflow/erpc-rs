@@ -131,7 +131,7 @@ fn generate_method(service_name: &str, method: &Method, buf: &mut String) {
         method.output_type
     );
 
-    buf.push_str("const ");
+    buf.push_str("pub const ");
     buf.push_str(&name);
     buf.push_str(": ");
     buf.push_str(&ty);
@@ -168,7 +168,7 @@ fn generate_client(service: &Service, buf: &mut String) {
     buf.push_str("#[derive(Clone)]\n");
     buf.push_str("pub struct ");
     buf.push_str(&client_name);
-    buf.push_str(" { pub client: ::erpc::Client }\n");
+    buf.push_str(" { pub client: ::erpc_rs::prelude::Client }\n");
 
     buf.push_str("impl ");
     buf.push_str(&client_name);
@@ -179,9 +179,9 @@ fn generate_client(service: &Service, buf: &mut String) {
 }
 
 fn generate_ctor(client_name: &str, buf: &mut String) {
-    buf.push_str("pub fn new(channel: ::erpc::Channel) -> Self { ");
+    buf.push_str("pub fn new(channel: ::erpc_rs::prelude::Channel) -> Self { ");
     buf.push_str(client_name);
-    buf.push_str(" { client: ::erpc::Client::new(channel) }");
+    buf.push_str(" { client: ::erpc_rs::prelude::Client::new(channel) }");
     buf.push_str("}\n");
 }
 
@@ -227,6 +227,12 @@ impl<'a> ClientMethod<'a> {
             buf.push_str(", req: &");
             buf.push_str(req);
         }
+        buf.push_str(", req_msgbuf: &'static mut ");
+        buf.push_str(&fq_erpc("MsgBuffer"));
+        buf.push_str(", resp_msgbuf: &'static mut ");
+        buf.push_str(&fq_erpc("MsgBuffer"));
+        buf.push_str(", cb: ");
+        buf.push_str(&fq_erpc("ContFunc"));
         buf.push_str(") -> ");
 
         buf.push_str(&fq_erpc("Result"));
@@ -253,16 +259,17 @@ impl<'a> ClientMethod<'a> {
         buf.push_str("(&");
         buf.push_str(self.data_name);
         if self.request.is_some() {
-            buf.push_str(", req");
+            buf.push_str(", req, req_msgbuf, resp_msgbuf, cb");
         }
-        buf.push_str(")");
+        buf.push_str(").await");
     }
 }
 
 fn generate_server(service: &Service, buf: &mut String) {
+    buf.push_str("#[async_trait::async_trait]\n");
     buf.push_str("pub trait ");
     buf.push_str(&service.name);
-    buf.push_str(" {\n");
+    buf.push_str(": Send + 'static {\n");
     generate_server_methods(service, buf);
     buf.push_str("}\n");
     generate_server_method_wrappers(service, buf);
@@ -271,22 +278,14 @@ fn generate_server(service: &Service, buf: &mut String) {
     buf.push_str(&to_snake_case(&service.name));
     buf.push_str("<S: ");
     buf.push_str(&service.name);
-    buf.push_str(" + Send + Clone + 'static>(s: S) -> ");
+    buf.push_str(" + Send + Clone + 'static>() -> ");
     buf.push_str(&fq_erpc("Service"));
     buf.push_str(" {\n");
-    buf.push_str("let mut builder = ::erpc::ServiceBuilder::new();\n");
+    buf.push_str("let mut builder = ::erpc_rs::prelude::ServiceBuilder::new();\n");
 
-    for method in &service.methods[0..service.methods.len() - 1] {
-        buf.push_str("let mut instance = s.clone();\n");
+    for method in &service.methods {
         generate_method_bind(&service.name, method, buf);
     }
-
-    buf.push_str("let mut instance = s;\n");
-    generate_method_bind(
-        &service.name,
-        &service.methods[service.methods.len() - 1],
-        buf,
-    );
 
     buf.push_str("builder.build()\n");
     buf.push_str("}\n");
@@ -294,18 +293,33 @@ fn generate_server(service: &Service, buf: &mut String) {
 
 fn generate_server_methods(service: &Service, buf: &mut String) {
     for method in &service.methods {
-        generate_server_method(method, buf);
+        generate_server_method(method, buf, true);
+        generate_server_method(method, buf, false);
     }
 }
 
-fn generate_server_method(method: &Method, buf: &mut String) {
+fn generate_server_method(method: &Method, buf: &mut String, sync: bool) {
+    if !sync {
+        buf.push_str("async ");
+    }
     buf.push_str("fn ");
     buf.push_str(&method.name);
-    buf.push_str("(&mut self, req: ");
+    if !sync {
+        buf.push_str("_async");
+    }
+    buf.push_str("(_req: ");
     buf.push_str(&fq_erpc("ReqHandle"));
-    buf.push_str(", ctx: ");
-    buf.push_str(&fq_erpc("RpcContext"));
-    buf.push_str(") { erpc::unimplemented_call!(req, ctx) }\n");
+    if sync {
+        buf.push_str(", _ctx: &'static mut ");
+        buf.push_str(&fq_erpc("RpcContext"));
+    }
+    if !sync {
+        buf.push_str(", _codec: ");
+        buf.push_str(&fq_erpc("Codec"));
+        let ty = format!("<{}, {}>", method.input_type, method.output_type);
+        buf.push_str(&ty);
+    }
+    buf.push_str(") { unimplemented!() }\n");
 }
 
 fn generate_server_method_wrappers(service: &Service, buf: &mut String) {
@@ -322,10 +336,10 @@ fn generate_server_method_wrapper(srv_name: &str, method: &Method, buf: &mut Str
     buf.push_str(srv_name);
     buf.push_str(">(req: *mut");
     buf.push_str(&fq_erpc("RawReqHandle"));
-    buf.push_str(", ctx: *mut c_void) {\n");
+    buf.push_str(", ctx: *mut erpc_rs::prelude::c_void) {\n");
     generate_wrapper_inner_body(method, buf);
     buf.push_str("}\n");
-    buf.push_str("pub unsafe fn ");
+    buf.push_str("unsafe fn ");
     buf.push_str(&method.name);
     buf.push_str("_wrapper_into");
     buf.push_str("<S: ");
@@ -340,8 +354,8 @@ fn generate_server_method_wrapper(srv_name: &str, method: &Method, buf: &mut Str
 
 fn generate_wrapper_inner_body(method: &Method, buf: &mut String) {
     buf.push_str("let result = std::panic::catch_unwind(|| {\n");
-    buf.push_str("let req = erpc::ReqHandle::from_inner_raw(req);\n");
-    buf.push_str("let ctx = unsafe { &mut *(ctx as *mut ::erpc::RpcContext) };\n");
+    buf.push_str("let req = erpc_rs::prelude::ReqHandle::from_inner_raw(req);\n");
+    buf.push_str("let ctx = unsafe { &mut *(ctx as *mut ::erpc_rs::prelude::RpcContext) };\n");
     buf.push_str("S::");
     buf.push_str(&method.name);
     buf.push_str("(req, ctx);\n");
@@ -358,9 +372,12 @@ fn generate_method_bind(service_name: &str, method: &Method, buf: &mut String) {
     buf.push_str(add_name);
     buf.push_str("(&");
     buf.push_str(&const_method_name(service_name, method));
+    buf.push_str(", move |req, codec| { std::boxed::Box::pin(S::");
+    buf.push_str(&method.name);
+    buf.push_str("_async(req, codec))}");
     buf.push_str(", unsafe {");
     buf.push_str(&method.name);
-    buf.push_str("_wrapper_into(s) }, \n");
+    buf.push_str("_wrapper_into::<S>() }, \n");
     buf.push_str(");\n");
 }
 
