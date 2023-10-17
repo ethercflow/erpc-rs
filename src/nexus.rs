@@ -1,12 +1,13 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::pin::Pin;
+
 use crate::error::{Error, Result};
 use erpc_sys::{
     c_void,
     erpc::{self, ReqHandle as RawReqHandle},
     UniquePtr, WithinUniquePtr, EEXIST, EINVAL, EPERM,
 };
-use std::pin::Pin;
 
 pub type ReqHandler = extern "C" fn(*mut RawReqHandle, *mut c_void);
 

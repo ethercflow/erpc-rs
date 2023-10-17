@@ -1,18 +1,22 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use std::{sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-}, fmt::Debug};
+use std::{
+    fmt::Debug,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
+use async_channel::{unbounded, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
     erpc::{SmErrType, SmEventType},
 };
-use async_channel::{Sender, unbounded, TryRecvError};
 
 use crate::{
-    env::Environment, error::Result, nexus::Nexus, call::RpcCall, rpc::Rpc, server::ServerRpcContext,
+    call::RpcCall, env::Environment, error::Result, nexus::Nexus, rpc::Rpc,
+    server::ServerRpcContext,
 };
 
 pub enum RpcContext {
@@ -58,44 +62,46 @@ impl ChannelBuilder {
     }
 
     pub async fn connect<S: Into<String>>(self, uri: S) -> Result<Channel> {
-        let env = self
-            .env
-            .pick_channel_env()
-            .unwrap();
+        let env = self.env.pick_channel_env().unwrap();
         let uri = uri.into();
-        env.0.send(Box::new(move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
-            let (tx, rx) = unbounded::<RpcCall>();
-            let mut rpc = Arc::new(Rpc::new(
-                unsafe { Arc::get_mut_unchecked(nexus) },
-                None,
-                id,
-                Some(sm_handler),
-                self.phy_port,
-            ));
-            let rpc_clone = rpc.clone();
-            let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
-            let mut subchans = Vec::new();
-            for _i in 0..self.subchan_count {
-                // TODO: make rem_rpc_id configurable
-                subchans.push(rpc.create_session(uri.as_str(), 0).unwrap());
-            }
-            let chan = Channel {
-                subchans,
-                assigned_idx: Arc::new(AtomicUsize::new(0)),
-                rpc: rpc_clone,
-                tx,
-            };
-            chan_tx.send_blocking(chan).unwrap();
+        env.0
+            .send(Box::new(
+                move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
+                    let (tx, rx) = unbounded::<RpcCall>();
+                    let mut rpc = Arc::new(Rpc::new(
+                        unsafe { Arc::get_mut_unchecked(nexus) },
+                        None,
+                        id,
+                        Some(sm_handler),
+                        self.phy_port,
+                    ));
+                    let rpc_clone = rpc.clone();
+                    let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
+                    let mut subchans = Vec::new();
+                    for _i in 0..self.subchan_count {
+                        // TODO: make rem_rpc_id configurable
+                        subchans.push(rpc.create_session(uri.as_str(), 0).unwrap());
+                    }
+                    let chan = Channel {
+                        subchans,
+                        assigned_idx: Arc::new(AtomicUsize::new(0)),
+                        rpc: rpc_clone,
+                        tx,
+                    };
+                    chan_tx.send_blocking(chan).unwrap();
 
-            loop {
-                match rx.try_recv() {
-                    Ok(call) => call.resolve(rpc),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Closed) => {}
-                }
-                rpc.run_event_loop(self.timeout_ms);
-            }
-        })).await.unwrap();
+                    loop {
+                        match rx.try_recv() {
+                            Ok(call) => call.resolve(rpc),
+                            Err(TryRecvError::Empty) => {}
+                            Err(TryRecvError::Closed) => {}
+                        }
+                        rpc.run_event_loop(self.timeout_ms);
+                    }
+                },
+            ))
+            .await
+            .unwrap();
         env.1.recv().await.map_err(Into::into)
     }
 }

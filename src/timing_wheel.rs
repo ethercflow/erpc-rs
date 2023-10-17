@@ -1,7 +1,11 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use erpc_sys::{erpc::{TimingWheel as RawTimingWheel, wheel_record_t}, CxxVector};
 use std::pin::Pin;
+
+use erpc_sys::{
+    erpc::{wheel_record_t, TimingWheel as RawTimingWheel},
+    CxxVector,
+};
 
 pub struct TimingWheel {
     inner: *mut RawTimingWheel,

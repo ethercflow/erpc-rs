@@ -1,7 +1,8 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use erpc_sys::{erpc, UniquePtr};
 use std::pin::Pin;
+
+use erpc_sys::{erpc, UniquePtr};
 
 pub struct MsgBuffer {
     pub(crate) inner: UniquePtr<erpc::MsgBuffer>,

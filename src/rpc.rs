@@ -1,5 +1,13 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::{pin::Pin, ptr};
+
+use erpc_sys::{
+    c_int, c_void,
+    erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
+    UniquePtr, WithinUniquePtr, EALREADY, EBUSY, EINVAL, ENOMEM, EPERM,
+};
+
 use crate::{
     error::{Error, Result},
     msg_buffer::MsgBuffer,
@@ -8,12 +16,6 @@ use crate::{
     timely::Timely,
     timing_wheel::TimingWheel,
 };
-use erpc_sys::{
-    c_int, c_void,
-    erpc::{self, kInvalidBgETid, SmErrType, SmEventType},
-    UniquePtr, WithinUniquePtr, EALREADY, EBUSY, EINVAL, ENOMEM, EPERM,
-};
-use std::{pin::Pin, ptr};
 
 pub type SmHandler = extern "C" fn(c_int, SmEventType, SmErrType, *mut c_void);
 pub type ContFunc = extern "C" fn(*mut c_void, *mut c_void);

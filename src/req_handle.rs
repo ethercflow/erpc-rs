@@ -1,8 +1,9 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::pin::Pin;
+
 use crate::msg_buffer::MsgBuffer;
 use erpc_sys::{erpc::MsgBuffer as RawMsgBuffer, erpc::ReqHandle as RawReqHandle, WithinUniquePtr};
-use std::pin::Pin;
 
 pub struct ReqHandle {
     inner: *mut RawReqHandle,

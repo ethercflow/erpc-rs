@@ -1,8 +1,6 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use crate::buf::MsgBufferReader;
-use crate::error::Result;
-use crate::msg_buffer::MsgBuffer;
+use crate::{buf::MsgBufferReader, error::Result, msg_buffer::MsgBuffer};
 
 pub type DeserializeFn<T> = fn(MsgBufferReader) -> Result<T>;
 pub type SerializeFn<T> = fn(&T, &mut MsgBuffer) -> Result<()>;

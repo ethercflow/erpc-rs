@@ -1,9 +1,9 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::boxed::Box;
+
 use async_channel::{bounded, Sender};
 use erpc_sys::{c_int, c_void};
-
-use std::boxed::Box;
 
 use crate::{
     buf::MsgBufferReader,

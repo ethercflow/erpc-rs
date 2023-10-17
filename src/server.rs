@@ -1,20 +1,30 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use std::{collections::HashMap, sync::{Arc, atomic::AtomicUsize}, future::Future, pin::Pin, mem::MaybeUninit};
+use std::{
+    collections::HashMap,
+    future::Future,
+    mem::MaybeUninit,
+    pin::Pin,
+    sync::{atomic::AtomicUsize, Arc},
+};
 
-use tokio::runtime::Runtime;
 use async_channel::{unbounded, Sender, TryRecvError};
-use erpc_sys::{c_void, c_int, erpc::{SmEventType, SmErrType}};
+use erpc_sys::{
+    c_int, c_void,
+    erpc::{SmErrType, SmEventType},
+};
+use tokio::runtime::Runtime;
 
 use crate::{
+    call::{Codec, RpcCall},
+    channel::Channel,
     codec::{DeserializeFn, SerializeFn},
     env::Environment,
     error::Result,
     method::Method,
-    nexus::{ReqHandler, Nexus}, channel::Channel,
-    call::{RpcCall, Codec},
-    rpc::Rpc,
+    nexus::{Nexus, ReqHandler},
     req_handle::ReqHandle,
+    rpc::Rpc,
 };
 
 pub type AsyncReqHandler = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
@@ -62,12 +72,13 @@ pub struct ServerRpcContext {
 impl ServerRpcContext {
     #[inline]
     pub unsafe fn get_handler(&mut self, req_type: u8) -> Option<&mut BoxHandler> {
-         self.registry.get_mut(&req_type)
+        self.registry.get_mut(&req_type)
     }
 
     #[inline]
     pub fn spawn<F>(&self, f: F)
-    where F: Future<Output = ()> + Send + 'static,
+    where
+        F: Future<Output = ()> + Send + 'static,
     {
         self.rt.spawn(f);
     }
@@ -105,10 +116,9 @@ impl ServiceBuilder {
         F: FnMut(ReqHandle, Codec<Req, Resp>) -> AsyncReqHandler + Send + Clone + 'static,
     {
         let (ser, de) = (method.resp_ser(), method.req_de());
-        let h =  move |req: ReqHandle| -> AsyncReqHandler {
-            execute_unary(ser, de, req, &mut handler)
-        };
-        let ch = Box::new(Handler::new( h));
+        let h =
+            move |req: ReqHandle| -> AsyncReqHandler { execute_unary(ser, de, req, &mut handler) };
+        let ch = Box::new(Handler::new(h));
         self.handlers.insert(method.id, ch);
         self.raw_handlers.insert(method.id, raw_handler);
         self
@@ -161,47 +171,55 @@ impl ServerBuilder {
 
     /// Finalize the [`ServerBuilder`] and build the [`Server`].
     pub async fn build_and_start(self) -> Result<Server> {
-        let env = self
-            .env
-            .pick_channel_env()
-            .unwrap();
-        env.0.send(Box::new(move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
-            for (k, v) in &self.raw_handlers {
-                unsafe { Arc::get_mut_unchecked(nexus)}.register_req_func(k.to_owned(), v.to_owned()).unwrap();
-            }
-            let mut ctx = ServerRpcContext {
-                registry: self.handlers.iter().map(|(k,v)| (k.to_owned(), v.box_clone())).collect(),
-                rpc: MaybeUninit::uninit(),
-                rt: tokio::runtime::Runtime::new().unwrap(),
-            };
-            let (tx, rx) = unbounded::<RpcCall>();
-            let mut rpc = Arc::new(Rpc::new(
-                unsafe { Arc::get_mut_unchecked(nexus) },
-                Some(&mut ctx as *mut ServerRpcContext as *mut c_void),
-                id,
-                Some(sm_handler),
-                self.phy_port,
-            ));
-            unsafe { ctx.rpc.as_mut_ptr().write(rpc.clone()) };
-            let rpc_clone = rpc.clone();
-            let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
-            let chan = Channel {
-                subchans: Vec::default(),
-                assigned_idx: Arc::new(AtomicUsize::new(0)),
-                rpc: rpc_clone,
-                tx,
-            };
-            chan_tx.send_blocking(chan).unwrap();
+        let env = self.env.pick_channel_env().unwrap();
+        env.0
+            .send(Box::new(
+                move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
+                    for (k, v) in &self.raw_handlers {
+                        unsafe { Arc::get_mut_unchecked(nexus) }
+                            .register_req_func(k.to_owned(), v.to_owned())
+                            .unwrap();
+                    }
+                    let mut ctx = ServerRpcContext {
+                        registry: self
+                            .handlers
+                            .iter()
+                            .map(|(k, v)| (k.to_owned(), v.box_clone()))
+                            .collect(),
+                        rpc: MaybeUninit::uninit(),
+                        rt: tokio::runtime::Runtime::new().unwrap(),
+                    };
+                    let (tx, rx) = unbounded::<RpcCall>();
+                    let mut rpc = Arc::new(Rpc::new(
+                        unsafe { Arc::get_mut_unchecked(nexus) },
+                        Some(&mut ctx as *mut ServerRpcContext as *mut c_void),
+                        id,
+                        Some(sm_handler),
+                        self.phy_port,
+                    ));
+                    unsafe { ctx.rpc.as_mut_ptr().write(rpc.clone()) };
+                    let rpc_clone = rpc.clone();
+                    let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
+                    let chan = Channel {
+                        subchans: Vec::default(),
+                        assigned_idx: Arc::new(AtomicUsize::new(0)),
+                        rpc: rpc_clone,
+                        tx,
+                    };
+                    chan_tx.send_blocking(chan).unwrap();
 
-            loop {
-                match rx.try_recv() {
-                    Ok(call) => call.resolve(rpc),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Closed) => {}
-                }
-                rpc.run_event_loop(self.timeout_ms);
-            }
-        })).await.unwrap();
+                    loop {
+                        match rx.try_recv() {
+                            Ok(call) => call.resolve(rpc),
+                            Err(TryRecvError::Empty) => {}
+                            Err(TryRecvError::Closed) => {}
+                        }
+                        rpc.run_event_loop(self.timeout_ms);
+                    }
+                },
+            ))
+            .await
+            .unwrap();
 
         Ok(Server {
             env: self.env,

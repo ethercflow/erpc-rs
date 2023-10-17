@@ -1,7 +1,8 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use erpc_sys::erpc::{self, Timely as RawTimely};
 use std::pin::Pin;
+
+use erpc_sys::erpc::{self, Timely as RawTimely};
 
 pub struct Timely {
     inner: *mut RawTimely,
