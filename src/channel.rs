@@ -12,7 +12,7 @@ use erpc_sys::{
 use async_channel::{Sender, unbounded, TryRecvError};
 
 use crate::{
-    env::Environment, error::Result, nexus::Nexus, call::Call, rpc::Rpc,
+    env::Environment, error::Result, nexus::Nexus, call::RpcCall, rpc::Rpc, server::ServerRpcContext,
 };
 
 pub enum RpcContext {
@@ -20,18 +20,7 @@ pub enum RpcContext {
     Server(ServerRpcContext),
 }
 
-impl RpcContext {
-    pub fn client() -> RpcContext {
-        unimplemented!()
-    }
-    pub fn server() -> RpcContext {
-        unimplemented!()
-    }
-}
-
 pub struct ClientRpcContext {}
-
-pub struct ServerRpcContext {}
 
 pub type RpcPollFn = Box<dyn Fn(u8, &mut Arc<Nexus>, Sender<Channel>) + Send + 'static>;
 
@@ -62,8 +51,8 @@ impl ChannelBuilder {
         self
     }
 
-    /// Set timeout ts.
-    pub fn timeout_ts(mut self, timeout_ms: usize) -> ChannelBuilder {
+    /// Set timeout ms.
+    pub fn timeout_ms(mut self, timeout_ms: usize) -> ChannelBuilder {
         self.timeout_ms = timeout_ms;
         self
     }
@@ -75,7 +64,7 @@ impl ChannelBuilder {
             .unwrap();
         let uri = uri.into();
         env.0.send(Box::new(move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
-            let (tx, rx) = unbounded::<Call>();
+            let (tx, rx) = unbounded::<RpcCall>();
             let mut rpc = Arc::new(Rpc::new(
                 unsafe { Arc::get_mut_unchecked(nexus) },
                 None,
@@ -87,20 +76,20 @@ impl ChannelBuilder {
             let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
             let mut subchans = Vec::new();
             for _i in 0..self.subchan_count {
-                subchans.push(rpc.create_session(uri.as_str(), id).unwrap());
+                // TODO: make rem_rpc_id configurable
+                subchans.push(rpc.create_session(uri.as_str(), 0).unwrap());
             }
             let chan = Channel {
                 subchans,
                 assigned_idx: Arc::new(AtomicUsize::new(0)),
                 rpc: rpc_clone,
-                ctx: None,
                 tx,
             };
             chan_tx.send_blocking(chan).unwrap();
 
             loop {
                 match rx.try_recv() {
-                    Ok(mut call) => call.resolve(rpc),
+                    Ok(call) => call.resolve(rpc),
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Closed) => {}
                 }
@@ -116,8 +105,7 @@ pub struct Channel {
     pub subchans: Vec<c_int>,
     pub assigned_idx: Arc<AtomicUsize>,
     pub rpc: Arc<Rpc>,
-    pub ctx: Option<Arc<RpcContext>>,
-    pub tx: Sender<Call>,
+    pub tx: Sender<RpcCall>,
 }
 
 impl Debug for Channel {
@@ -144,5 +132,5 @@ impl Channel {
 pub struct SubChannel {
     pub id: c_int,
     pub rpc: Arc<Rpc>,
-    pub tx: Sender<Call>,
+    pub tx: Sender<RpcCall>,
 }
