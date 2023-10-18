@@ -1,14 +1,15 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-mod common;
-mod helloworld;
+use std::{boxed::Box, mem::MaybeUninit, sync::Arc};
 
 use anyhow::Result;
 use async_channel::Sender;
-use common::*;
 use erpc_rs::prelude::*;
-use helloworld::{GreeterClient, HelloRequest};
-use std::{boxed::Box, mem::MaybeUninit, sync::Arc};
+
+use hello_world_pb::{
+    common::*,
+    helloworld::{GreeterClient, HelloRequest},
+};
 
 static mut REQ: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();
 static mut RESP: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();

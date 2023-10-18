@@ -1,14 +1,15 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-mod common;
-mod helloworld;
+use std::{mem::MaybeUninit, sync::Arc};
 
 use anyhow::Result;
-use common::*;
 use erpc_rs::prelude::*;
-use helloworld::{create_greeter, Greeter, HelloReply, HelloRequest, METHOD_GREETER_SAY_HELLO};
-use std::{mem::MaybeUninit, sync::Arc};
 use tokio::signal;
+
+use hello_world_pb::{
+    common::*,
+    helloworld::{create_greeter, Greeter, HelloReply, HelloRequest, METHOD_GREETER_SAY_HELLO},
+};
 
 static mut SERVER: MaybeUninit<Server> = MaybeUninit::uninit();
 

@@ -4,8 +4,9 @@ use std::io::Result;
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=proto/helloworld.proto");
-    let mut config = Config::new();
-    config.service_generator(Box::new(Generator));
-    config.compile_protos(&["proto/helloworld.proto"], &["proto"])?;
+    Config::new()
+        .service_generator(Box::new(Generator))
+        .out_dir("src")
+        .compile_protos(&["proto/helloworld.proto"], &["proto"])?;
     Ok(())
 }

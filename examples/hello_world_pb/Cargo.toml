@@ -14,11 +14,11 @@ async-trait = "0.1.73"
 
 [[bin]]
 name = "hello_client"
-path = "client.rs"
+path = "bin/client.rs"
 
 [[bin]]
 name = "hello_server"
-path = "server.rs"
+path = "bin/server.rs"
 
 [build-dependencies]
 prost-build = "0.12"
