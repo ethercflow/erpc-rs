@@ -189,6 +189,7 @@ fn generate_client_methods(service: &Service, buf: &mut String) {
     for method in &service.methods {
         generate_client_method(&service.name, method, buf);
     }
+    generate_client_alloc_msg_buffer(buf)
 }
 
 fn generate_client_method(service_name: &str, method: &Method, buf: &mut String) {
@@ -263,6 +264,14 @@ impl<'a> ClientMethod<'a> {
         }
         buf.push_str(").await");
     }
+}
+
+fn generate_client_alloc_msg_buffer(buf: &mut String) {
+    buf.push_str("pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> ");
+    buf.push_str(&fq_erpc("MsgBuffer"));
+    buf.push_str("{\n");
+    buf.push_str("self.client.alloc_msg_buffer(max_data_size)\n");
+    buf.push_str("}\n");
 }
 
 fn generate_server(service: &Service, buf: &mut String) {
