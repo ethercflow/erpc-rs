@@ -1,5 +1,7 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::sync::Arc;
+
 use crate::{
     call::Call,
     channel::{Channel, SubChannel},
@@ -33,5 +35,10 @@ impl Client {
         cb: ContFunc,
     ) -> Result<Resp> {
         Call::unary(&self.chan, method, req, req_msgbuf, resp_msgbuf, cb).await
+    }
+
+    pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> MsgBuffer {
+        let rpc = unsafe { Arc::get_mut_unchecked(&mut self.chan.rpc) };
+        rpc.alloc_msg_buffer_or_die(max_data_size)
     }
 }

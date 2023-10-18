@@ -22,6 +22,7 @@ use crate::{
     env::Environment,
     error::Result,
     method::Method,
+    msg_buffer::MsgBuffer,
     nexus::{Nexus, ReqHandler},
     req_handle::ReqHandle,
     rpc::Rpc,
@@ -232,6 +233,13 @@ impl ServerBuilder {
 pub struct Server {
     env: Arc<Environment>,
     pub ch: Channel,
+}
+
+impl Server {
+    pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> MsgBuffer {
+        let rpc = unsafe { Arc::get_mut_unchecked(&mut self.ch.rpc) };
+        rpc.alloc_msg_buffer_or_die(max_data_size)
+    }
 }
 
 // helper function to call a unary handler.

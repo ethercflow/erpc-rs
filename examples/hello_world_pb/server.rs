@@ -1,7 +1,5 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-#![feature(get_mut_unchecked)]
-
 mod common;
 mod helloworld;
 
@@ -24,7 +22,9 @@ impl Greeter for GreeterService {
         ctx: &'static mut ::erpc_rs::prelude::RpcContext,
     ) {
         if let RpcContext::Server(sctx) = ctx {
-            let f = unsafe { sctx.get_handler(METHOD_GREETER_SAY_HELLO.id) }.unwrap().handle(req);
+            let f = unsafe { sctx.get_handler(METHOD_GREETER_SAY_HELLO.id) }
+                .unwrap()
+                .handle(req);
             sctx.spawn(f);
         }
     }
@@ -37,9 +37,8 @@ impl Greeter for GreeterService {
         let msg = format!("Hello {}", req.name);
         let resp = HelloReply { message: msg };
         let mut resp_msgbuf = unsafe {
-            let rpc = Arc::get_mut_unchecked(&mut SERVER.assume_init_mut().ch.rpc);
             // FIXME: c++ mutex will be called, may become a performance bottleneck in actual use
-            rpc.alloc_msg_buffer_or_die(K_MSG_SIZE)
+            SERVER.assume_init_mut().alloc_msg_buffer(K_MSG_SIZE)
         };
         (codec.ser)(&resp, &mut resp_msgbuf).unwrap();
         req_handle.init_dyn_resp_msgbuf_from_allocated(&mut resp_msgbuf);

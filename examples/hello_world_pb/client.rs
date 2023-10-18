@@ -1,24 +1,22 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-#![feature(get_mut_unchecked)]
-
 mod common;
 mod helloworld;
 
 use anyhow::Result;
+use async_channel::Sender;
 use common::*;
 use erpc_rs::prelude::*;
 use helloworld::{GreeterClient, HelloRequest};
-use std::{mem::MaybeUninit, sync::Arc, boxed::Box};
-use async_channel::Sender;
+use std::{boxed::Box, mem::MaybeUninit, sync::Arc};
 
 static mut REQ: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();
 static mut RESP: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();
 
 extern "C" fn cont_func(_: *mut c_void, tag: *mut c_void) {
     let resp = unsafe { RESP.assume_init_mut() };
-    let msg_buffer_reader = unsafe {MsgBufferReader::new(resp.as_inner() as *const RawMsgBuffer)} ;
-    let tx = unsafe {Box::from_raw(tag as *mut Sender<MsgBufferReader>)};
+    let msg_buffer_reader = unsafe { MsgBufferReader::new(resp.as_inner() as *const RawMsgBuffer) };
+    let tx = unsafe { Box::from_raw(tag as *mut Sender<MsgBufferReader>) };
     tx.send_blocking(msg_buffer_reader).unwrap();
 }
 
@@ -33,16 +31,14 @@ async fn main() -> Result<()> {
         .connect(&server_uri)
         .await
         .unwrap();
-    let mut ch1 = ch.clone();
-    let rpc = unsafe { Arc::get_mut_unchecked(&mut ch1.rpc) };
-    let client = GreeterClient::new(ch);
-    let req = HelloRequest { name: "world".to_owned() };
+    let mut client = GreeterClient::new(ch);
+    let req = HelloRequest {
+        name: "world".to_owned(),
+    };
 
     unsafe {
-        REQ.as_mut_ptr()
-            .write(rpc.alloc_msg_buffer_or_die(K_MSG_SIZE));
-        RESP.as_mut_ptr()
-            .write(rpc.alloc_msg_buffer_or_die(K_MSG_SIZE));
+        REQ.as_mut_ptr().write(client.alloc_msg_buffer(K_MSG_SIZE));
+        RESP.as_mut_ptr().write(client.alloc_msg_buffer(K_MSG_SIZE));
     }
 
     let reply = unsafe {

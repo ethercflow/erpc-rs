@@ -12,20 +12,18 @@ pub struct HelloReply {
     #[prost(string, tag = "1")]
     pub message: ::prost::alloc::string::String,
 }
-pub const METHOD_GREETER_SAY_HELLO: ::erpc_rs::prelude::Method<
-    HelloRequest,
-    HelloReply,
-> = ::erpc_rs::prelude::Method {
-    id: 1,
-    req_mar: ::erpc_rs::prelude::Marshaller {
-        ser: ::erpc_rs::prelude::pr_ser,
-        de: ::erpc_rs::prelude::pr_de,
-    },
-    resp_mar: ::erpc_rs::prelude::Marshaller {
-        ser: ::erpc_rs::prelude::pr_ser,
-        de: ::erpc_rs::prelude::pr_de,
-    },
-};
+pub const METHOD_GREETER_SAY_HELLO: ::erpc_rs::prelude::Method<HelloRequest, HelloReply> =
+    ::erpc_rs::prelude::Method {
+        id: 1,
+        req_mar: ::erpc_rs::prelude::Marshaller {
+            ser: ::erpc_rs::prelude::pr_ser,
+            de: ::erpc_rs::prelude::pr_de,
+        },
+        resp_mar: ::erpc_rs::prelude::Marshaller {
+            ser: ::erpc_rs::prelude::pr_ser,
+            de: ::erpc_rs::prelude::pr_de,
+        },
+    };
 #[derive(Clone)]
 pub struct GreeterClient {
     pub client: ::erpc_rs::prelude::Client,
@@ -46,6 +44,9 @@ impl GreeterClient {
         self.client
             .unary_call(&METHOD_GREETER_SAY_HELLO, req, req_msgbuf, resp_msgbuf, cb)
             .await
+    }
+    pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> ::erpc_rs::prelude::MsgBuffer {
+        self.client.alloc_msg_buffer(max_data_size)
     }
 }
 #[async_trait::async_trait]
@@ -81,11 +82,10 @@ unsafe fn say_hello_wrapper_into<S: Greeter>() -> ::erpc_rs::prelude::ReqHandler
 }
 pub fn create_greeter<S: Greeter + Send + Clone + 'static>() -> ::erpc_rs::prelude::Service {
     let mut builder = ::erpc_rs::prelude::ServiceBuilder::new();
-    builder = builder
-        .add_unary_handler(
-            &METHOD_GREETER_SAY_HELLO,
-            move |req, codec| { std::boxed::Box::pin(S::say_hello_async(req, codec)) },
-            unsafe { say_hello_wrapper_into::<S>() },
-        );
+    builder = builder.add_unary_handler(
+        &METHOD_GREETER_SAY_HELLO,
+        move |req, codec| std::boxed::Box::pin(S::say_hello_async(req, codec)),
+        unsafe { say_hello_wrapper_into::<S>() },
+    );
     builder.build()
 }
