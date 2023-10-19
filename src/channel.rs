@@ -2,6 +2,7 @@
 
 use std::{
     boxed::Box,
+    collections::VecDeque,
     fmt::Debug,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -16,8 +17,8 @@ use erpc_sys::{
 };
 
 use crate::{
-    buf::MsgBufferReader, call::RpcCall, env::Environment, error::Result, nexus::Nexus, rpc::Rpc,
-    server::ServerRpcContext,
+    buf::MsgBufferReader, call::RpcCall, env::Environment, error::Result, msg_buffer::MsgBuffer,
+    nexus::Nexus, rpc::Rpc, server::ServerRpcContext,
 };
 
 pub enum RpcContext {
@@ -25,7 +26,10 @@ pub enum RpcContext {
     Server(ServerRpcContext),
 }
 
-pub struct ClientRpcContext {}
+pub struct ClientRpcContext {
+    // TODO: make sure resp of the same type are not out of order, otherwise use `HashMap` instead
+    pub resp_msgbufs: Vec<VecDeque<Arc<MsgBuffer>>>,
+}
 
 pub type RpcPollFn = Box<dyn Fn(u8, &mut Arc<Nexus>, Sender<Channel>) + Send + 'static>;
 
@@ -36,7 +40,10 @@ pub struct ChannelBuilder {
     timeout_ms: usize,
 }
 
+// TODO: impl this to make sure session has been connected before use
 extern "C" fn sm_handler(_: c_int, _: SmEventType, _: SmErrType, _: *mut c_void) {}
+
+const MAX_REQ_TYPE: usize = 257;
 
 impl ChannelBuilder {
     /// Initialize a new [`ChannelBuilder`].
@@ -68,10 +75,15 @@ impl ChannelBuilder {
         env.0
             .send(Box::new(
                 move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
+                    let mut ctx = ClientRpcContext {
+                        // TODO: make cap configurable, related with eRPC's credits
+                        resp_msgbufs: vec![VecDeque::with_capacity(32); MAX_REQ_TYPE],
+                    };
+                    let raw_ctx = &mut ctx as *mut ClientRpcContext as *mut c_void;
                     let (tx, rx) = unbounded::<RpcCall>();
                     let mut rpc = Arc::new(Rpc::new(
                         unsafe { Arc::get_mut_unchecked(nexus) },
-                        None,
+                        Some(raw_ctx),
                         id,
                         Some(sm_handler),
                         self.phy_port,
@@ -93,7 +105,7 @@ impl ChannelBuilder {
 
                     loop {
                         match rx.try_recv() {
-                            Ok(call) => call.resolve(rpc),
+                            Ok(call) => call.resolve(rpc, raw_ctx),
                             Err(TryRecvError::Empty) => {}
                             Err(TryRecvError::Closed) => {}
                         }

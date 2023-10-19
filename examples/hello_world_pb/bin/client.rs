@@ -1,6 +1,6 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use std::{boxed::Box, mem::MaybeUninit, sync::Arc};
+use std::{boxed::Box, sync::Arc};
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -8,14 +8,19 @@ use erpc_rs::prelude::*;
 
 use hello_world_pb::{
     common::*,
-    helloworld::{GreeterClient, HelloRequest},
+    helloworld::{GreeterClient, HelloRequest, METHOD_GREETER_SAY_HELLO},
 };
 
-static mut REQ: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();
-static mut RESP: MaybeUninit<MsgBuffer> = MaybeUninit::uninit();
-
-extern "C" fn cont_func(_: *mut c_void, tag: *mut c_void) {
-    let resp = unsafe { RESP.assume_init_mut() };
+// TODO: make sure if there's no other user-related logic, this function can be
+// automatically generated and invisible to the user.
+extern "C" fn cont_func(ctx: *mut c_void, tag: *mut c_void) {
+    let ctx = unsafe { &mut *(ctx as *mut ClientRpcContext) };
+    let resp = ctx
+        .resp_msgbufs
+        .get_mut(METHOD_GREETER_SAY_HELLO.id as usize)
+        .unwrap()
+        .pop_front()
+        .unwrap();
     let msg_buffer_reader = unsafe { MsgBufferReader::new(resp.as_inner() as *const RawMsgBuffer) };
     let tx = unsafe { Box::from_raw(tag as *mut Sender<MsgBufferReader>) };
     tx.send_blocking(msg_buffer_reader).unwrap();
@@ -37,28 +42,14 @@ async fn main() -> Result<()> {
         name: "world".to_owned(),
     };
 
-    unsafe {
-        REQ.as_mut_ptr().write(client.alloc_msg_buffer(K_MSG_SIZE));
-        RESP.as_mut_ptr().write(client.alloc_msg_buffer(K_MSG_SIZE));
-    }
+    let req_msgbuf = Arc::new(client.alloc_msg_buffer(K_MSG_SIZE));
+    let resp_msgbuf = Arc::new(client.alloc_msg_buffer(K_MSG_SIZE));
 
-    let reply = unsafe {
-        client
-            .say_hello(
-                &req,
-                REQ.assume_init_mut(),
-                RESP.assume_init_mut(),
-                cont_func,
-            )
-            .await
-    }
-    .unwrap();
+    let reply = client
+        .say_hello(&req, req_msgbuf, resp_msgbuf, cont_func)
+        .await
+        .unwrap();
     println!("Greeter received: {}", reply.message);
-
-    unsafe {
-        REQ.assume_init_drop();
-        RESP.assume_init_drop();
-    }
 
     Ok(())
 }

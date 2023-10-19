@@ -30,8 +30,8 @@ impl Client {
         &self,
         method: &Method<Req, Resp>,
         req: &Req,
-        req_msgbuf: &'static mut MsgBuffer,
-        resp_msgbuf: &'static mut MsgBuffer,
+        req_msgbuf: Arc<MsgBuffer>,
+        resp_msgbuf: Arc<MsgBuffer>,
         cb: ContFunc,
     ) -> Result<Resp> {
         Call::unary(&self.chan, method, req, req_msgbuf, resp_msgbuf, cb).await

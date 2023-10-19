@@ -190,10 +190,11 @@ impl ServerBuilder {
                         rpc: MaybeUninit::uninit(),
                         rt: tokio::runtime::Runtime::new().unwrap(),
                     };
+                    let raw_ctx = &mut ctx as *mut ServerRpcContext as *mut c_void;
                     let (tx, rx) = unbounded::<RpcCall>();
                     let mut rpc = Arc::new(Rpc::new(
                         unsafe { Arc::get_mut_unchecked(nexus) },
-                        Some(&mut ctx as *mut ServerRpcContext as *mut c_void),
+                        Some(raw_ctx),
                         id,
                         Some(sm_handler),
                         self.phy_port,
@@ -211,7 +212,7 @@ impl ServerBuilder {
 
                     loop {
                         match rx.try_recv() {
-                            Ok(call) => call.resolve(rpc),
+                            Ok(call) => call.resolve(rpc, raw_ctx),
                             Err(TryRecvError::Empty) => {}
                             Err(TryRecvError::Closed) => {}
                         }

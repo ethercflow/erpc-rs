@@ -1,11 +1,13 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
+use std::sync::Arc;
+
 use async_channel::Sender;
 use erpc_sys::{c_int, c_void};
 
 use crate::{
     buf::MsgBufferReader,
-    channel::SubChannel,
+    channel::{ClientRpcContext, SubChannel},
     codec::{DeserializeFn, SerializeFn},
     error::Result,
     method::Method,
@@ -20,9 +22,9 @@ pub enum RpcCall {
 }
 
 impl RpcCall {
-    pub fn resolve(self, rpc: &mut Rpc) {
+    pub fn resolve(self, rpc: &mut Rpc, ctx: *mut c_void) {
         match self {
-            RpcCall::Call(call) => call.resolve(rpc),
+            RpcCall::Call(call) => call.resolve(rpc, ctx),
             RpcCall::CallTag(tag) => tag.resolve(rpc),
         }
     }
@@ -32,8 +34,8 @@ impl RpcCall {
 pub struct Call {
     pub sid: c_int,
     pub req_type: u8,
-    pub req_msgbuf: &'static mut MsgBuffer,
-    pub resp_msgbuf: &'static mut MsgBuffer,
+    pub req_msgbuf: Arc<MsgBuffer>,
+    pub resp_msgbuf: Arc<MsgBuffer>,
     pub cb: ContFunc,
     pub tx: *mut Sender<MsgBufferReader>,
 }
@@ -45,11 +47,11 @@ impl Call {
         subchan: &SubChannel,
         method: &Method<Req, Resp>,
         req: &Req,
-        req_msgbuf: &'static mut MsgBuffer,
-        resp_msgbuf: &'static mut MsgBuffer,
+        mut req_msgbuf: Arc<MsgBuffer>,
+        resp_msgbuf: Arc<MsgBuffer>,
         cb: ContFunc,
     ) -> Result<Resp> {
-        (method.req_ser())(req, req_msgbuf)?;
+        (method.req_ser())(req, unsafe { Arc::get_mut_unchecked(&mut req_msgbuf) })?;
         subchan
             .tx
             .send(RpcCall::Call(Call {
@@ -66,12 +68,20 @@ impl Call {
         (method.resp_de())(resp)
     }
 
-    pub fn resolve(self, rpc: &mut Rpc) {
+    pub fn resolve(mut self, rpc: &mut Rpc, ctx: *mut c_void) {
+        unsafe {
+            let ctx = &mut *(ctx as *mut ClientRpcContext);
+            (*ctx)
+                .resp_msgbufs
+                .get_mut(self.req_type as usize)
+                .unwrap()
+                .push_back(self.resp_msgbuf.clone());
+        }
         rpc.enqueue_request(
             self.sid,
             self.req_type,
-            self.req_msgbuf,
-            self.resp_msgbuf,
+            unsafe { Arc::get_mut_unchecked(&mut self.req_msgbuf) },
+            unsafe { Arc::get_mut_unchecked(&mut self.resp_msgbuf) },
             self.cb,
             Some(self.tx as *mut c_void),
         );

@@ -39,8 +39,8 @@ impl GreeterClient {
     pub async fn say_hello(
         &self,
         req: &HelloRequest,
-        req_msgbuf: &'static mut ::erpc_rs::prelude::MsgBuffer,
-        resp_msgbuf: &'static mut ::erpc_rs::prelude::MsgBuffer,
+        req_msgbuf: std::sync::Arc<::erpc_rs::prelude::MsgBuffer>,
+        resp_msgbuf: std::sync::Arc<::erpc_rs::prelude::MsgBuffer>,
         cb: ::erpc_rs::prelude::ContFunc,
     ) -> ::erpc_rs::prelude::Result<HelloReply> {
         self.client

@@ -228,11 +228,11 @@ impl<'a> ClientMethod<'a> {
             buf.push_str(", req: &");
             buf.push_str(req);
         }
-        buf.push_str(", req_msgbuf: &'static mut ");
+        buf.push_str(", req_msgbuf: std::sync::Arc<");
         buf.push_str(&fq_erpc("MsgBuffer"));
-        buf.push_str(", resp_msgbuf: &'static mut ");
+        buf.push_str(">, resp_msgbuf: std::sync::Arc<");
         buf.push_str(&fq_erpc("MsgBuffer"));
-        buf.push_str(", cb: ");
+        buf.push_str(">, cb: ");
         buf.push_str(&fq_erpc("ContFunc"));
         buf.push_str(") -> ");
 

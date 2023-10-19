@@ -25,7 +25,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::call::{CallTag, Codec, RpcCall};
     #[doc(no_inline)]
-    pub use crate::channel::{Channel, ChannelBuilder, RpcContext};
+    pub use crate::channel::{Channel, ChannelBuilder, ClientRpcContext, RpcContext};
     #[doc(no_inline)]
     pub use crate::client::Client;
     #[doc(no_inline)]
