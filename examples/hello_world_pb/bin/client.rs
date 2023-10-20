@@ -1,6 +1,6 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
-use std::{boxed::Box, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -22,7 +22,7 @@ extern "C" fn cont_func(ctx: *mut c_void, tag: *mut c_void) {
         .pop_front()
         .unwrap();
     let msg_buffer_reader = unsafe { MsgBufferReader::new(resp.as_inner() as *const RawMsgBuffer) };
-    let tx = unsafe { Box::from_raw(tag as *mut Sender<MsgBufferReader>) };
+    let tx = unsafe { &mut *(tag as *mut Sender<MsgBufferReader>) };
     tx.send_blocking(msg_buffer_reader).unwrap();
 }
 
