@@ -23,7 +23,8 @@ impl Greeter for GreeterService {
         ctx: &'static mut ::erpc_rs::prelude::RpcContext,
     ) {
         if let RpcContext::Server(sctx) = ctx {
-            let f = unsafe { sctx.get_handler(METHOD_GREETER_SAY_HELLO.id) }
+            let f = sctx
+                .get_handler(METHOD_GREETER_SAY_HELLO.id)
                 .unwrap()
                 .handle(req);
             sctx.spawn(f);
@@ -71,5 +72,6 @@ async fn main() -> Result<()> {
     }
     signal::ctrl_c().await?;
     eprintln!("Ctrl-c received!");
+    unsafe { SERVER.assume_init_mut().shutdown().await.unwrap() };
     Ok(())
 }

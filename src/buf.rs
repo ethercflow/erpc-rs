@@ -12,6 +12,9 @@ pub struct MsgBufferReader {
 }
 
 impl MsgBufferReader {
+    /// # Safety
+    ///
+    /// It's safe when buf is non-null pointer
     pub unsafe fn new(buf: *const RawMsgBuffer) -> Self {
         MsgBufferReader {
             buf,

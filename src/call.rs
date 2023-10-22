@@ -76,7 +76,7 @@ impl Call {
 
     pub fn resolve(mut self, rpc: &mut Rpc, ctx: *mut c_void) {
         let ctx = unsafe { &mut *(ctx as *mut ClientRpcContext) };
-        let idx = (*ctx)
+        let idx = ctx
             .resp_msgbufs_idxs
             .get_mut(self.req_type as usize)
             .unwrap();
@@ -85,7 +85,7 @@ impl Call {
             tx: self.tx,
             idx: *idx,
         };
-        let _ = (*ctx)
+        let _ = ctx
             .resp_msgbufs
             .get_mut(self.req_type as usize)
             .unwrap()
@@ -96,7 +96,7 @@ impl Call {
             unsafe { Arc::get_mut_unchecked(&mut self.req_msgbuf) },
             unsafe { Arc::get_mut_unchecked(&mut self.resp_msgbuf) },
             self.cb,
-            Some(Box::into_raw(Box::new(tag)) as *mut Tag as *mut c_void),
+            Some(Box::into_raw(Box::new(tag)) as *mut c_void),
         );
     }
 }

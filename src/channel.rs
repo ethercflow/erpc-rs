@@ -10,7 +10,7 @@ use std::{
     },
 };
 
-use async_channel::{unbounded, Sender, TryRecvError};
+use async_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
     erpc::{SmErrType, SmEventType},
@@ -95,11 +95,13 @@ impl ChannelBuilder {
                         // TODO: make rem_rpc_id configurable
                         subchans.push(rpc.create_session(uri.as_str(), 0).unwrap());
                     }
+                    let (stx, srx) = bounded::<()>(1);
                     let chan = Channel {
-                        subchans,
+                        subchans: subchans.clone(),
                         assigned_idx: Arc::new(AtomicUsize::new(0)),
                         rpc: rpc_clone,
                         tx,
+                        rx: srx,
                     };
                     chan_tx.send_blocking(chan).unwrap();
 
@@ -107,10 +109,17 @@ impl ChannelBuilder {
                         match rx.try_recv() {
                             Ok(call) => call.resolve(rpc, raw_ctx),
                             Err(TryRecvError::Empty) => {}
-                            Err(TryRecvError::Closed) => {}
+                            Err(TryRecvError::Closed) => {
+                                break;
+                            }
                         }
                         rpc.run_event_loop(self.timeout_ms);
                     }
+
+                    for sid in subchans {
+                        rpc.destroy_session(sid).unwrap();
+                    }
+                    stx.send_blocking(()).unwrap();
                 },
             ))
             .await
@@ -125,6 +134,7 @@ pub struct Channel {
     pub assigned_idx: Arc<AtomicUsize>,
     pub rpc: Arc<Rpc>,
     pub tx: Sender<RpcCall>,
+    pub rx: Receiver<()>,
 }
 
 impl Debug for Channel {
@@ -144,6 +154,11 @@ impl Channel {
             });
         }
         None
+    }
+
+    pub async fn shutdown(&mut self) -> Result<()> {
+        self.tx.close();
+        self.rx.recv().await.map_err(Into::into)
     }
 }
 

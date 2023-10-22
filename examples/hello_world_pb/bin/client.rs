@@ -30,13 +30,13 @@ async fn main() -> Result<()> {
     let local_uri = K_CLIENT_HOST_NAME.to_owned() + ":" + K_UDP_PORT;
     let server_uri = K_SERVER_HOST_NAME.to_owned() + ":" + K_UDP_PORT;
     let env = Arc::new(EnvBuilder::new(local_uri).chan_count(1).build());
-    let ch = ChannelBuilder::new(env, PHY_PORT)
+    let mut ch = ChannelBuilder::new(env, PHY_PORT)
         .subchan_count(1)
         .timeout_ms(0)
         .connect(&server_uri)
         .await
         .unwrap();
-    let mut client = GreeterClient::new(ch);
+    let mut client = GreeterClient::new(ch.clone());
     let req = HelloRequest {
         name: "world".to_owned(),
     };
@@ -50,5 +50,6 @@ async fn main() -> Result<()> {
         .unwrap();
     println!("Greeter received: {}", reply.message);
 
+    ch.shutdown().await.unwrap();
     Ok(())
 }

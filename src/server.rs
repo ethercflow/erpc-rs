@@ -8,7 +8,7 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 
-use async_channel::{unbounded, Sender, TryRecvError};
+use async_channel::{bounded, unbounded, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
     erpc::{SmErrType, SmEventType},
@@ -72,7 +72,7 @@ pub struct ServerRpcContext {
 
 impl ServerRpcContext {
     #[inline]
-    pub unsafe fn get_handler(&mut self, req_type: u8) -> Option<&mut BoxHandler> {
+    pub fn get_handler(&mut self, req_type: u8) -> Option<&mut BoxHandler> {
         self.registry.get_mut(&req_type)
     }
 
@@ -90,6 +90,7 @@ extern "C" fn sm_handler(_: c_int, _: SmEventType, _: SmErrType, _: *mut c_void)
 /// [`Service`] factory in order to configure the properties.
 ///
 /// Use it to build a service which can be registered to a server.
+#[derive(Default)]
 pub struct ServiceBuilder {
     handlers: HashMap<u8, BoxHandler>,
     raw_handlers: HashMap<u8, ReqHandler>,
@@ -202,11 +203,13 @@ impl ServerBuilder {
                     unsafe { ctx.rpc.as_mut_ptr().write(rpc.clone()) };
                     let rpc_clone = rpc.clone();
                     let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
+                    let (stx, srx) = bounded::<()>(1);
                     let chan = Channel {
                         subchans: Vec::default(),
                         assigned_idx: Arc::new(AtomicUsize::new(0)),
                         rpc: rpc_clone,
                         tx,
+                        rx: srx,
                     };
                     chan_tx.send_blocking(chan).unwrap();
 
@@ -214,10 +217,13 @@ impl ServerBuilder {
                         match rx.try_recv() {
                             Ok(call) => call.resolve(rpc, raw_ctx),
                             Err(TryRecvError::Empty) => {}
-                            Err(TryRecvError::Closed) => {}
+                            Err(TryRecvError::Closed) => {
+                                break;
+                            }
                         }
                         rpc.run_event_loop(self.timeout_ms);
                     }
+                    stx.send_blocking(()).unwrap();
                 },
             ))
             .await
@@ -240,6 +246,10 @@ impl Server {
     pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> MsgBuffer {
         let rpc = unsafe { Arc::get_mut_unchecked(&mut self.ch.rpc) };
         rpc.alloc_msg_buffer_or_die(max_data_size)
+    }
+
+    pub async fn shutdown(&mut self) -> Result<()> {
+        self.ch.shutdown().await
     }
 }
 
