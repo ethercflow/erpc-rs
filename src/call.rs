@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use async_channel::Sender;
+use async_channel::{bounded, Sender};
 use erpc_sys::{c_int, c_void};
 
 use crate::{
@@ -30,6 +30,11 @@ impl RpcCall {
     }
 }
 
+pub struct Tag {
+    pub tx: Sender<MsgBufferReader>,
+    pub idx: u16,
+}
+
 /// A Call represents an RPC.
 pub struct Call {
     pub sid: c_int,
@@ -37,7 +42,7 @@ pub struct Call {
     pub req_msgbuf: Arc<MsgBuffer>,
     pub resp_msgbuf: Arc<MsgBuffer>,
     pub cb: ContFunc,
-    pub tx: *mut Sender<MsgBufferReader>,
+    pub tx: Sender<MsgBufferReader>,
 }
 
 unsafe impl Send for Call {}
@@ -51,6 +56,7 @@ impl Call {
         resp_msgbuf: Arc<MsgBuffer>,
         cb: ContFunc,
     ) -> Result<Resp> {
+        let (tx, rx) = bounded::<MsgBufferReader>(1);
         (method.req_ser())(req, unsafe { Arc::get_mut_unchecked(&mut req_msgbuf) })?;
         subchan
             .tx
@@ -60,30 +66,37 @@ impl Call {
                 req_msgbuf,
                 resp_msgbuf,
                 cb,
-                tx: subchan.mbr_tx,
+                tx,
             }))
             .await
             .unwrap();
-        let resp = subchan.mbr_rx.recv().await.unwrap();
+        let resp = rx.recv().await.unwrap();
         (method.resp_de())(resp)
     }
 
     pub fn resolve(mut self, rpc: &mut Rpc, ctx: *mut c_void) {
-        unsafe {
-            let ctx = &mut *(ctx as *mut ClientRpcContext);
-            (*ctx)
-                .resp_msgbufs
-                .get_mut(self.req_type as usize)
-                .unwrap()
-                .push_back(self.resp_msgbuf.clone());
-        }
+        let ctx = unsafe { &mut *(ctx as *mut ClientRpcContext) };
+        let idx = (*ctx)
+            .resp_msgbufs_idxs
+            .get_mut(self.req_type as usize)
+            .unwrap();
+        *idx = idx.wrapping_add(1);
+        let tag = Tag {
+            tx: self.tx,
+            idx: *idx,
+        };
+        let _ = (*ctx)
+            .resp_msgbufs
+            .get_mut(self.req_type as usize)
+            .unwrap()
+            .insert(*idx, self.resp_msgbuf.clone());
         rpc.enqueue_request(
             self.sid,
             self.req_type,
             unsafe { Arc::get_mut_unchecked(&mut self.req_msgbuf) },
             unsafe { Arc::get_mut_unchecked(&mut self.resp_msgbuf) },
             self.cb,
-            Some(self.tx as *mut c_void),
+            Some(Box::into_raw(Box::new(tag)) as *mut Tag as *mut c_void),
         );
     }
 }

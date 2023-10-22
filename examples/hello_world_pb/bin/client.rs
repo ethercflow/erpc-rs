@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_channel::Sender;
 use erpc_rs::prelude::*;
 
 use hello_world_pb::{
@@ -15,15 +14,15 @@ use hello_world_pb::{
 // automatically generated and invisible to the user.
 extern "C" fn cont_func(ctx: *mut c_void, tag: *mut c_void) {
     let ctx = unsafe { &mut *(ctx as *mut ClientRpcContext) };
-    let resp = ctx
+    let tag = unsafe { Box::from_raw(tag as *mut Tag) };
+    let (_, resp) = ctx
         .resp_msgbufs
         .get_mut(METHOD_GREETER_SAY_HELLO.id as usize)
         .unwrap()
-        .pop_front()
+        .remove_entry(&tag.idx)
         .unwrap();
     let msg_buffer_reader = unsafe { MsgBufferReader::new(resp.as_inner() as *const RawMsgBuffer) };
-    let tx = unsafe { &mut *(tag as *mut Sender<MsgBufferReader>) };
-    tx.send_blocking(msg_buffer_reader).unwrap();
+    tag.tx.send_blocking(msg_buffer_reader).unwrap();
 }
 
 #[tokio::main]
@@ -46,7 +45,7 @@ async fn main() -> Result<()> {
     let resp_msgbuf = Arc::new(client.alloc_msg_buffer(K_MSG_SIZE));
 
     let reply = client
-        .say_hello(&req, req_msgbuf, resp_msgbuf, cont_func)
+        .say_hello(&req, req_msgbuf.clone(), resp_msgbuf.clone(), cont_func)
         .await
         .unwrap();
     println!("Greeter received: {}", reply.message);

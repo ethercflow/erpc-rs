@@ -23,7 +23,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::buf::MsgBufferReader;
     #[doc(no_inline)]
-    pub use crate::call::{CallTag, Codec, RpcCall};
+    pub use crate::call::{CallTag, Codec, RpcCall, Tag};
     #[doc(no_inline)]
     pub use crate::channel::{Channel, ChannelBuilder, ClientRpcContext, RpcContext};
     #[doc(no_inline)]

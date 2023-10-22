@@ -2,7 +2,7 @@
 
 use std::{
     boxed::Box,
-    collections::VecDeque,
+    collections::HashMap,
     fmt::Debug,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -10,15 +10,15 @@ use std::{
     },
 };
 
-use async_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
+use async_channel::{unbounded, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
     erpc::{SmErrType, SmEventType},
 };
 
 use crate::{
-    buf::MsgBufferReader, call::RpcCall, env::Environment, error::Result, msg_buffer::MsgBuffer,
-    nexus::Nexus, rpc::Rpc, server::ServerRpcContext,
+    call::RpcCall, env::Environment, error::Result, msg_buffer::MsgBuffer, nexus::Nexus, rpc::Rpc,
+    server::ServerRpcContext,
 };
 
 pub enum RpcContext {
@@ -27,8 +27,8 @@ pub enum RpcContext {
 }
 
 pub struct ClientRpcContext {
-    // TODO: make sure resp of the same type are not out of order, otherwise use `HashMap` instead
-    pub resp_msgbufs: Vec<VecDeque<Arc<MsgBuffer>>>,
+    pub resp_msgbufs: Vec<HashMap<u16, Arc<MsgBuffer>>>,
+    pub resp_msgbufs_idxs: Vec<u16>,
 }
 
 pub type RpcPollFn = Box<dyn Fn(u8, &mut Arc<Nexus>, Sender<Channel>) + Send + 'static>;
@@ -76,8 +76,8 @@ impl ChannelBuilder {
             .send(Box::new(
                 move |id: u8, nexus: &mut Arc<Nexus>, chan_tx: Sender<Channel>| {
                     let mut ctx = ClientRpcContext {
-                        // TODO: make cap configurable, related with eRPC's credits
-                        resp_msgbufs: vec![VecDeque::with_capacity(32); MAX_REQ_TYPE],
+                        resp_msgbufs: vec![HashMap::new(); MAX_REQ_TYPE],
+                        resp_msgbufs_idxs: vec![0; MAX_REQ_TYPE],
                     };
                     let raw_ctx = &mut ctx as *mut ClientRpcContext as *mut c_void;
                     let (tx, rx) = unbounded::<RpcCall>();
@@ -137,13 +137,10 @@ impl Channel {
     pub fn pick_subchan(&mut self) -> Option<SubChannel> {
         let idx = self.assigned_idx.fetch_add(1, Ordering::Relaxed);
         if idx < self.subchans.len() {
-            let (tx, rx) = bounded::<MsgBufferReader>(1);
             return Some(SubChannel {
                 id: self.subchans[idx],
                 rpc: self.rpc.clone(),
                 tx: self.tx.clone(),
-                mbr_tx: Box::into_raw(Box::new(tx)),
-                mbr_rx: rx,
             });
         }
         None
@@ -155,6 +152,4 @@ pub struct SubChannel {
     pub id: c_int,
     pub rpc: Arc<Rpc>,
     pub tx: Sender<RpcCall>,
-    pub mbr_tx: *mut Sender<MsgBufferReader>,
-    pub mbr_rx: Receiver<MsgBufferReader>,
 }
