@@ -397,9 +397,9 @@ pub fn protoc_gen_erpc_rust_main() {
     for arg in args {
         if let Some(value) = arg.strip_prefix("--protos=") {
             eprintln!("value: {}", value);
-            protos.extend(value.split(",").map(|s| s.to_string()));
+            protos.extend(value.split(',').map(|s| s.to_string()));
         } else if let Some(value) = arg.strip_prefix("--includes=") {
-            includes.extend(value.split(",").map(|s| s.to_string()));
+            includes.extend(value.split(',').map(|s| s.to_string()));
         } else if let Some(value) = arg.strip_prefix("--out-dir=") {
             out_dir = value.to_string();
         }
