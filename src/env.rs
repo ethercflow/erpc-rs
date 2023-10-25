@@ -19,8 +19,9 @@ use crate::{
 
 // event loop
 fn poll_channel(id: u8, mut nexus: Arc<Nexus>, rx: Receiver<RpcPollFn>, tx: Sender<Channel>) {
-    let rpc_poll_fn = rx.recv_blocking().unwrap();
-    rpc_poll_fn(id, &mut nexus, tx);
+    if let Ok(rpc_poll_fn) = rx.recv_blocking() {
+        rpc_poll_fn(id, &mut nexus, tx);
+    }
 }
 
 /// [`Environment`] factory in order to configure the properties.

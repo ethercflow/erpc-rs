@@ -3,7 +3,6 @@
 use std::{
     collections::HashMap,
     future::Future,
-    mem::MaybeUninit,
     pin::Pin,
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -11,7 +10,7 @@ use std::{
 use async_channel::{bounded, unbounded, Sender, TryRecvError};
 use erpc_sys::{
     c_int, c_void,
-    erpc::{SmErrType, SmEventType},
+    erpc::{ms_to_cycles, rdtsc, SmErrType, SmEventType},
 };
 use tokio::runtime::Runtime;
 
@@ -43,17 +42,17 @@ impl<F> Handler<F> {
 }
 
 pub trait CloneableHandler: Send {
-    fn handle(&mut self, req: ReqHandle) -> AsyncReqHandler;
+    fn handle(&mut self, req: ReqHandle, rpc: Arc<Rpc>, tx: Sender<RpcCall>) -> AsyncReqHandler;
     fn box_clone(&self) -> Box<dyn CloneableHandler>;
 }
 
 impl<F: 'static> CloneableHandler for Handler<F>
 where
-    F: FnMut(ReqHandle) -> AsyncReqHandler + Send + Clone,
+    F: FnMut(ReqHandle, Arc<Rpc>, Sender<RpcCall>) -> AsyncReqHandler + Send + Clone,
 {
     #[inline]
-    fn handle(&mut self, req: ReqHandle) -> AsyncReqHandler {
-        (self.cb)(req)
+    fn handle(&mut self, req: ReqHandle, rpc: Arc<Rpc>, tx: Sender<RpcCall>) -> AsyncReqHandler {
+        (self.cb)(req, rpc, tx)
     }
 
     #[inline]
@@ -66,8 +65,9 @@ pub type BoxHandler = Box<dyn CloneableHandler>;
 
 pub struct ServerRpcContext {
     registry: HashMap<u8, BoxHandler>,
-    rpc: MaybeUninit<Arc<Rpc>>,
+    pub rpc: Arc<Rpc>,
     pub rt: Runtime,
+    pub tx: Sender<RpcCall>,
 }
 
 impl ServerRpcContext {
@@ -115,11 +115,15 @@ impl ServiceBuilder {
     where
         Req: 'static,
         Resp: 'static,
-        F: FnMut(ReqHandle, Codec<Req, Resp>) -> AsyncReqHandler + Send + Clone + 'static,
+        F: FnMut(ReqHandle, Arc<Rpc>, Sender<RpcCall>, Codec<Req, Resp>) -> AsyncReqHandler
+            + Send
+            + Clone
+            + 'static,
     {
         let (ser, de) = (method.resp_ser(), method.req_de());
-        let h =
-            move |req: ReqHandle| -> AsyncReqHandler { execute_unary(ser, de, req, &mut handler) };
+        let h = move |req: ReqHandle, rpc: Arc<Rpc>, tx: Sender<RpcCall>| -> AsyncReqHandler {
+            execute_unary(ser, de, req, &mut handler, rpc, tx)
+        };
         let ch = Box::new(Handler::new(h));
         self.handlers.insert(method.id, ch);
         self.raw_handlers.insert(method.id, raw_handler);
@@ -182,27 +186,30 @@ impl ServerBuilder {
                             .register_req_func(k.to_owned(), v.to_owned())
                             .unwrap();
                     }
+                    let mut rpc = Arc::new(Rpc::new(
+                        unsafe { Arc::get_mut_unchecked(nexus) },
+                        None,
+                        id,
+                        Some(sm_handler),
+                        self.phy_port,
+                    ));
+                    let (tx, rx) = unbounded::<RpcCall>();
                     let mut ctx = ServerRpcContext {
                         registry: self
                             .handlers
                             .iter()
                             .map(|(k, v)| (k.to_owned(), v.box_clone()))
                             .collect(),
-                        rpc: MaybeUninit::uninit(),
+                        rpc: rpc.clone(),
                         rt: tokio::runtime::Runtime::new().unwrap(),
+                        tx: tx.clone(),
                     };
-                    let raw_ctx = &mut ctx as *mut ServerRpcContext as *mut c_void;
-                    let (tx, rx) = unbounded::<RpcCall>();
-                    let mut rpc = Arc::new(Rpc::new(
-                        unsafe { Arc::get_mut_unchecked(nexus) },
-                        Some(raw_ctx),
-                        id,
-                        Some(sm_handler),
-                        self.phy_port,
-                    ));
-                    unsafe { ctx.rpc.as_mut_ptr().write(rpc.clone()) };
                     let rpc_clone = rpc.clone();
                     let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
+                    let raw_ctx = &mut ctx as *mut ServerRpcContext as *mut c_void;
+                    unsafe {
+                        rpc.set_context(raw_ctx);
+                    }
                     let (stx, srx) = bounded::<()>(1);
                     let chan = Channel {
                         subchans: Vec::default(),
@@ -213,15 +220,25 @@ impl ServerBuilder {
                     };
                     chan_tx.send_blocking(chan).unwrap();
 
-                    loop {
-                        match rx.try_recv() {
-                            Ok(call) => call.resolve(rpc, raw_ctx),
-                            Err(TryRecvError::Empty) => {}
-                            Err(TryRecvError::Closed) => {
+                    'outer: loop {
+                        let timeout_tsc = ms_to_cycles(self.timeout_ms as f64, rpc.get_freq_ghz());
+                        let start_tsc = rdtsc();
+                        loop {
+                            rpc.run_event_loop_once();
+                            // TODO: make it configurable
+                            for _i in 0..8192 {
+                                match rx.try_recv() {
+                                    Ok(call) => call.resolve(rpc, raw_ctx),
+                                    Err(TryRecvError::Empty) => break,
+                                    Err(TryRecvError::Closed) => {
+                                        break 'outer;
+                                    }
+                                }
+                            }
+                            if rpc.get_ev_loop_tsc() - start_tsc > timeout_tsc {
                                 break;
                             }
                         }
-                        rpc.run_event_loop(self.timeout_ms);
                     }
                     stx.send_blocking(()).unwrap();
                 },
@@ -259,9 +276,11 @@ pub fn execute_unary<P, Q, F>(
     de: DeserializeFn<P>,
     req_handle: ReqHandle,
     f: &mut F,
+    rpc: Arc<Rpc>,
+    tx: Sender<RpcCall>,
 ) -> AsyncReqHandler
 where
-    F: FnMut(ReqHandle, Codec<P, Q>) -> AsyncReqHandler + Send + Clone,
+    F: FnMut(ReqHandle, Arc<Rpc>, Sender<RpcCall>, Codec<P, Q>) -> AsyncReqHandler + Send + Clone,
 {
-    f(req_handle, Codec::new(ser, de))
+    f(req_handle, rpc, tx, Codec::new(ser, de))
 }

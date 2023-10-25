@@ -18,6 +18,7 @@ include_cpp! {
     generate!("erpc::kSessionCredits")
     generate!("erpc::kSessionReqWindow")
     generate!("erpc::kInvalidSessionNum")
+    generate!("erpc::ms_to_cycles")
     generate!("erpc::MsgBuffer")
     generate!("erpc::Nexus")
     generate!("erpc::ReqHandle")

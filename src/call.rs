@@ -5,6 +5,9 @@ use std::sync::Arc;
 use async_channel::{bounded, Sender};
 use erpc_sys::{c_int, c_void};
 
+#[cfg(feature = "bench_stat")]
+use erpc_sys::erpc::rdtsc;
+
 use crate::{
     buf::MsgBufferReader,
     channel::{ClientRpcContext, SubChannel},
@@ -90,6 +93,10 @@ impl Call {
             .get_mut(self.req_type as usize)
             .unwrap()
             .insert(*idx, self.resp_msgbuf.clone());
+        #[cfg(feature = "bench_stat")]
+        {
+            ctx.bench_stat.req_ts[*idx as usize % 32] = rdtsc();
+        }
         rpc.enqueue_request(
             self.sid,
             self.req_type,
@@ -98,6 +105,10 @@ impl Call {
             self.cb,
             Some(Box::into_raw(Box::new(tag)) as *mut c_void),
         );
+        #[cfg(feature = "bench_stat")]
+        {
+            ctx.bench_stat.stat_tx_bytes_tot += ctx.bench_stat.args_req_size;
+        }
     }
 }
 

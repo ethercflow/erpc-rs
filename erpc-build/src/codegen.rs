@@ -320,10 +320,14 @@ fn generate_server_method(method: &Method, buf: &mut String, sync: bool) {
     buf.push_str(&fq_erpc("ReqHandle"));
     if sync {
         buf.push_str(", _ctx: &'static mut ");
-        buf.push_str(&fq_erpc("RpcContext"));
+        buf.push_str(&fq_erpc("ServerRpcContext"));
     }
     if !sync {
-        buf.push_str(", _codec: ");
+        buf.push_str(", _rcp: std::sync::Arc<");
+        buf.push_str(&fq_erpc("Rpc"));
+        buf.push_str(">, _tx: ::async_channel::Sender<");
+        buf.push_str(&fq_erpc("RpcCall"));
+        buf.push_str(">, _codec: ");
         buf.push_str(&fq_erpc("Codec"));
         let ty = format!("<{}, {}>", method.input_type, method.output_type);
         buf.push_str(&ty);
@@ -364,7 +368,9 @@ fn generate_server_method_wrapper(srv_name: &str, method: &Method, buf: &mut Str
 fn generate_wrapper_inner_body(method: &Method, buf: &mut String) {
     buf.push_str("let result = std::panic::catch_unwind(|| {\n");
     buf.push_str("let req = erpc_rs::prelude::ReqHandle::from_inner_raw(req);\n");
-    buf.push_str("let ctx = unsafe { &mut *(ctx as *mut ::erpc_rs::prelude::RpcContext) };\n");
+    buf.push_str(
+        "let ctx = unsafe { &mut *(ctx as *mut ::erpc_rs::prelude::ServerRpcContext) };\n",
+    );
     buf.push_str("S::");
     buf.push_str(&method.name);
     buf.push_str("(req, ctx);\n");
@@ -381,9 +387,9 @@ fn generate_method_bind(service_name: &str, method: &Method, buf: &mut String) {
     buf.push_str(add_name);
     buf.push_str("(&");
     buf.push_str(&const_method_name(service_name, method));
-    buf.push_str(", move |req, codec| { std::boxed::Box::pin(S::");
+    buf.push_str(", move |req, rpc, tx, codec| { std::boxed::Box::pin(S::");
     buf.push_str(&method.name);
-    buf.push_str("_async(req, codec))}");
+    buf.push_str("_async(req, rpc, tx, codec))}");
     buf.push_str(", unsafe {");
     buf.push_str(&method.name);
     buf.push_str("_wrapper_into::<S>() }, \n");

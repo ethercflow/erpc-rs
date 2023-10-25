@@ -1,6 +1,7 @@
 // Copyright (c) 2023, IOMesh Inc. All rights reserved.
 
 #![feature(get_mut_unchecked)]
+#![feature(sort_floats)]
 
 mod buf;
 mod call;
@@ -15,6 +16,8 @@ mod nexus;
 mod req_handle;
 mod rpc;
 mod server;
+#[cfg(feature = "bench_stat")]
+mod stat;
 mod timely;
 mod timing_wheel;
 
@@ -25,7 +28,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::call::{CallTag, Codec, RpcCall, Tag};
     #[doc(no_inline)]
-    pub use crate::channel::{Channel, ChannelBuilder, ClientRpcContext, RpcContext};
+    pub use crate::channel::{Channel, ChannelBuilder, ClientRpcContext};
     #[doc(no_inline)]
     pub use crate::client::Client;
     #[doc(no_inline)]

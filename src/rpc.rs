@@ -72,6 +72,7 @@ impl Rpc {
     pub fn destroy_session(&mut self, session_num: c_int) -> Result<()> {
         let res = self.as_inner_mut().destroy_session(session_num);
         match (0 - i32::from(res)) as u32 {
+            0 => Ok(()),
             EPERM => Err(Error::Internal("can't destroy session from a thread other than the one that created this Rpc object or session already destroyed or session connection in progress.".into())),
             EINVAL => Err(Error::Internal("invalid session number or it's a server session.".into())),
             EBUSY => Err(Error::Internal("session has pending RPC requests.".into())),
@@ -93,6 +94,19 @@ impl Rpc {
     #[inline]
     pub fn run_event_loop(&mut self, timeout_ms: usize) {
         self.as_inner_mut().run_event_loop(timeout_ms);
+    }
+
+    #[inline]
+    pub fn get_ev_loop_tsc(&self) -> usize {
+        self.as_inner().get_ev_loop_tsc()
+    }
+
+    /// # Safety
+    ///
+    /// It's safe when buf is non-null pointer
+    #[inline]
+    pub unsafe fn set_context(&mut self, ctx: *mut c_void) {
+        self.as_inner_mut().set_context(ctx);
     }
 
     #[inline]

@@ -58,12 +58,14 @@ impl GreeterClient {
 pub trait Greeter: Send + 'static {
     fn say_hello(
         _req: ::erpc_rs::prelude::ReqHandle,
-        _ctx: &'static mut ::erpc_rs::prelude::RpcContext,
+        _ctx: &'static mut ::erpc_rs::prelude::ServerRpcContext,
     ) {
         unimplemented!()
     }
     async fn say_hello_async(
         _req: ::erpc_rs::prelude::ReqHandle,
+        _rcp: std::sync::Arc<::erpc_rs::prelude::Rpc>,
+        _tx: ::async_channel::Sender<::erpc_rs::prelude::RpcCall>,
         _codec: ::erpc_rs::prelude::Codec<HelloRequest, HelloReply>,
     ) {
         unimplemented!()
@@ -75,7 +77,7 @@ extern "C" fn say_hello_wrapper<S: Greeter>(
 ) {
     let result = std::panic::catch_unwind(|| {
         let req = erpc_rs::prelude::ReqHandle::from_inner_raw(req);
-        let ctx = unsafe { &mut *(ctx as *mut ::erpc_rs::prelude::RpcContext) };
+        let ctx = unsafe { &mut *(ctx as *mut ::erpc_rs::prelude::ServerRpcContext) };
         S::say_hello(req, ctx);
     });
     if result.is_err() {
@@ -90,7 +92,9 @@ pub fn create_greeter<S: Greeter + Send + Clone + 'static>() -> ::erpc_rs::prelu
     builder = builder
         .add_unary_handler(
             &METHOD_GREETER_SAY_HELLO,
-            move |req, codec| { std::boxed::Box::pin(S::say_hello_async(req, codec)) },
+            move |req, rpc, tx, codec| {
+                std::boxed::Box::pin(S::say_hello_async(req, rpc, tx, codec))
+            },
             unsafe { say_hello_wrapper_into::<S>() },
         );
     builder.build()

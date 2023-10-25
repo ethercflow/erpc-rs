@@ -17,7 +17,6 @@ use profile_incast::*;
 use profile_victim::*;
 use signal_hook::consts::SIGINT;
 use std::{
-    io::Error,
     mem::MaybeUninit,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -361,9 +360,9 @@ fn thread_func(
     }
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     let ctrl_c_pressed: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    signal_hook::flag::register(SIGINT, Arc::clone(&ctrl_c_pressed))?;
+    signal_hook::flag::register(SIGINT, Arc::clone(&ctrl_c_pressed)).unwrap();
     let args = parse_args();
 
     setup_profile(&args);

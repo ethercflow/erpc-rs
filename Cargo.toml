@@ -9,8 +9,11 @@ license = "Apache-2.0"
 categories = [ "RPC" ]
 
 [workspace]
-members = ["erpc-sys", "erpc-build"]
+members = ["erpc-sys", "erpc-build", "apps/large_rpc_tput_async"]
 exclude = ["apps/large_rpc_tput", "examples/hello_world", "examples/hello_world_pb"]
+
+[features]
+bench_stat = []
 
 [workspace.dependencies]
 prost = { version = "0.12"}

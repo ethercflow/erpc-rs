@@ -1,0 +1,16 @@
+
+syntax = "proto3";
+
+package largerpctput;
+
+service Bench {
+    rpc SendRequest(BenchRequest) returns (BenchResponse) {}
+}
+
+message BenchRequest {
+  bytes buf = 1;
+}
+
+message BenchResponse {
+  bytes buf = 1;
+}
