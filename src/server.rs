@@ -253,18 +253,9 @@ impl ServerBuilder {
 
                         #[cfg(feature = "bench_stat")]
                         {
-                            let mut timely = rpc.get_timely(c_int::from(0));
-
-                            ctx.bench_stat.compute(
-                                rpc.get_num_re_tx(c_int::from(0)),
-                                self.timeout_ms,
-                                timely.get_rtt_perc(0.5),
-                                timely.get_rtt_perc(0.99),
-                            );
-                            ctx.bench_stat.output(timely.get_rate_gbps());
+                            ctx.bench_stat.compute(0, self.timeout_ms, 0.0, 0.0);
+                            ctx.bench_stat.output(0.0);
                             ctx.bench_stat.reset();
-                            timely.reset_rtt_stats();
-                            rpc.reset_num_re_tx(c_int::from(0));
                         }
                     }
                     stx.send_blocking(()).unwrap();
