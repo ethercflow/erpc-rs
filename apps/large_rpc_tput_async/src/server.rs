@@ -18,6 +18,11 @@ struct BenchService;
 #[async_trait::async_trait]
 impl Bench for BenchService {
     fn send_request(req: ReqHandle, ctx: &'static mut ServerRpcContext) {
+        #[cfg(feature = "bench_stat")]
+        {
+            // TODO: support concurrency more than 1
+            ctx.bench_stat.req_ts[0] = rdtsc();
+        }
         let rpc = ctx.rpc.clone();
         let tx = ctx.tx.clone();
         let f = ctx

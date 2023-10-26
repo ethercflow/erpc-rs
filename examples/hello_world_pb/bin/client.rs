@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     let resp_msgbuf = Arc::new(client.alloc_msg_buffer(K_MSG_SIZE));
 
     let reply = client
-        .say_hello(&req, req_msgbuf.clone(), resp_msgbuf.clone(), cont_func)
+        .say_hello(&req, req_msgbuf.clone(), resp_msgbuf.clone(), cont_func, 0)
         .await
         .unwrap();
     println!("Greeter received: {}", reply.message);

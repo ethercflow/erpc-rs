@@ -49,8 +49,8 @@ impl Default for BenchStat {
             stat_rx_bytes_tot: 0,
             stat_tx_bytes_tot: 0,
             req_ts: [0; MAX_CONCURRENCY],
-            args_req_size: 0,
-            args_resp_size: 0,
+            args_req_size: 1,
+            args_resp_size: 1,
         }
     }
 }

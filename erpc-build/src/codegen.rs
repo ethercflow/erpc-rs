@@ -234,6 +234,7 @@ impl<'a> ClientMethod<'a> {
         buf.push_str(&fq_erpc("MsgBuffer"));
         buf.push_str(">, cb: ");
         buf.push_str(&fq_erpc("ContFunc"));
+        buf.push_str(", cid: usize");
         buf.push_str(") -> ");
 
         buf.push_str(&fq_erpc("Result"));
@@ -260,7 +261,7 @@ impl<'a> ClientMethod<'a> {
         buf.push_str("(&");
         buf.push_str(self.data_name);
         if self.request.is_some() {
-            buf.push_str(", req, req_msgbuf, resp_msgbuf, cb");
+            buf.push_str(", req, req_msgbuf, resp_msgbuf, cb, cid");
         }
         buf.push_str(").await");
     }

@@ -27,6 +27,9 @@ use crate::{
     rpc::Rpc,
 };
 
+#[cfg(feature = "bench_stat")]
+use crate::stat::BenchStat;
+
 pub type AsyncReqHandler = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 /// An RPC call holder.
@@ -68,6 +71,9 @@ pub struct ServerRpcContext {
     pub rpc: Arc<Rpc>,
     pub rt: Runtime,
     pub tx: Sender<RpcCall>,
+
+    #[cfg(feature = "bench_stat")]
+    pub bench_stat: BenchStat,
 }
 
 impl ServerRpcContext {
@@ -203,6 +209,8 @@ impl ServerBuilder {
                         rpc: rpc.clone(),
                         rt: tokio::runtime::Runtime::new().unwrap(),
                         tx: tx.clone(),
+                        #[cfg(feature = "bench_stat")]
+                        bench_stat: Default::default(),
                     };
                     let rpc_clone = rpc.clone();
                     let rpc = unsafe { Arc::get_mut_unchecked(&mut rpc) };
@@ -219,6 +227,9 @@ impl ServerBuilder {
                         rx: srx,
                     };
                     chan_tx.send_blocking(chan).unwrap();
+
+                    #[cfg(feature = "bench_stat")]
+                    ctx.bench_stat.init();
 
                     'outer: loop {
                         let timeout_tsc = ms_to_cycles(self.timeout_ms as f64, rpc.get_freq_ghz());
@@ -238,6 +249,22 @@ impl ServerBuilder {
                             if rpc.get_ev_loop_tsc() - start_tsc > timeout_tsc {
                                 break;
                             }
+                        }
+
+                        #[cfg(feature = "bench_stat")]
+                        {
+                            let mut timely = rpc.get_timely(c_int::from(0));
+
+                            ctx.bench_stat.compute(
+                                rpc.get_num_re_tx(c_int::from(0)),
+                                self.timeout_ms,
+                                timely.get_rtt_perc(0.5),
+                                timely.get_rtt_perc(0.99),
+                            );
+                            ctx.bench_stat.output(timely.get_rate_gbps());
+                            ctx.bench_stat.reset();
+                            timely.reset_rtt_stats();
+                            rpc.reset_num_re_tx(c_int::from(0));
                         }
                     }
                     stx.send_blocking(()).unwrap();

@@ -6,7 +6,7 @@ use async_channel::{bounded, Sender};
 use erpc_sys::{c_int, c_void};
 
 #[cfg(feature = "bench_stat")]
-use erpc_sys::erpc::rdtsc;
+use erpc_sys::erpc::{rdtsc, to_usec};
 
 use crate::{
     buf::MsgBufferReader,
@@ -19,6 +19,9 @@ use crate::{
     rpc::{ContFunc, Rpc},
 };
 
+#[cfg(feature = "bench_stat")]
+use crate::server::ServerRpcContext;
+
 pub enum RpcCall {
     Call(Call),
     CallTag(CallTag),
@@ -28,7 +31,7 @@ impl RpcCall {
     pub fn resolve(self, rpc: &mut Rpc, ctx: *mut c_void) {
         match self {
             RpcCall::Call(call) => call.resolve(rpc, ctx),
-            RpcCall::CallTag(tag) => tag.resolve(rpc),
+            RpcCall::CallTag(tag) => tag.resolve(rpc, ctx),
         }
     }
 }
@@ -36,6 +39,7 @@ impl RpcCall {
 pub struct Tag {
     pub tx: Sender<MsgBufferReader>,
     pub idx: u16,
+    pub cid: usize,
 }
 
 /// A Call represents an RPC.
@@ -46,6 +50,7 @@ pub struct Call {
     pub resp_msgbuf: Arc<MsgBuffer>,
     pub cb: ContFunc,
     pub tx: Sender<MsgBufferReader>,
+    pub cid: usize,
 }
 
 unsafe impl Send for Call {}
@@ -58,6 +63,7 @@ impl Call {
         mut req_msgbuf: Arc<MsgBuffer>,
         resp_msgbuf: Arc<MsgBuffer>,
         cb: ContFunc,
+        cid: usize,
     ) -> Result<Resp> {
         let (tx, rx) = bounded::<MsgBufferReader>(1);
         (method.req_ser())(req, unsafe { Arc::get_mut_unchecked(&mut req_msgbuf) })?;
@@ -70,6 +76,7 @@ impl Call {
                 resp_msgbuf,
                 cb,
                 tx,
+                cid,
             }))
             .await
             .unwrap();
@@ -87,6 +94,7 @@ impl Call {
         let tag = Tag {
             tx: self.tx,
             idx: *idx,
+            cid: self.cid,
         };
         let _ = ctx
             .resp_msgbufs
@@ -95,7 +103,7 @@ impl Call {
             .insert(*idx, self.resp_msgbuf.clone());
         #[cfg(feature = "bench_stat")]
         {
-            ctx.bench_stat.req_ts[*idx as usize % 32] = rdtsc();
+            ctx.bench_stat.req_ts[self.cid] = rdtsc();
         }
         rpc.enqueue_request(
             self.sid,
@@ -128,7 +136,17 @@ pub struct CallTag {
 }
 
 impl CallTag {
-    pub fn resolve(mut self, rpc: &mut Rpc) {
+    pub fn resolve(mut self, rpc: &mut Rpc, _ctx: *mut c_void) {
+        #[cfg(feature = "bench_stat")]
+        {
+            let ctx = unsafe { &mut *(_ctx as *mut ServerRpcContext) };
+            let usec = to_usec(
+                // TODO: support concurrency more than 1
+                rdtsc() - ctx.bench_stat.req_ts[0],
+                rpc.get_freq_ghz(),
+            );
+            ctx.bench_stat.lat_vec.push(usec);
+        }
         let mut resp_msgbuf = self.req_handle.get_dyn_resp_msgbuf();
         rpc.enqueue_response(&mut self.req_handle, &mut resp_msgbuf);
     }

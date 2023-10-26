@@ -33,8 +33,9 @@ impl Client {
         req_msgbuf: Arc<MsgBuffer>,
         resp_msgbuf: Arc<MsgBuffer>,
         cb: ContFunc,
+        cid: usize,
     ) -> Result<Resp> {
-        Call::unary(&self.chan, method, req, req_msgbuf, resp_msgbuf, cb).await
+        Call::unary(&self.chan, method, req, req_msgbuf, resp_msgbuf, cb, cid).await
     }
 
     pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> MsgBuffer {

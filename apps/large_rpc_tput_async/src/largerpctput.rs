@@ -38,9 +38,17 @@ impl BenchClient {
         req_msgbuf: std::sync::Arc<::erpc_rs::prelude::MsgBuffer>,
         resp_msgbuf: std::sync::Arc<::erpc_rs::prelude::MsgBuffer>,
         cb: ::erpc_rs::prelude::ContFunc,
+        cid: usize,
     ) -> ::erpc_rs::prelude::Result<BenchResponse> {
         self.client
-            .unary_call(&METHOD_BENCH_SEND_REQUEST, req, req_msgbuf, resp_msgbuf, cb)
+            .unary_call(
+                &METHOD_BENCH_SEND_REQUEST,
+                req,
+                req_msgbuf,
+                resp_msgbuf,
+                cb,
+                cid,
+            )
             .await
     }
     pub fn alloc_msg_buffer(&mut self, max_data_size: usize) -> ::erpc_rs::prelude::MsgBuffer {

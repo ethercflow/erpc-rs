@@ -21,7 +21,7 @@ extern "C" fn cont_func(ctx: *mut c_void, tag: *mut c_void) {
         .remove_entry(&tag.idx)
         .unwrap();
     let usec = to_usec(
-        rdtsc() - ctx.bench_stat.req_ts[tag.idx as usize % 32],
+        rdtsc() - ctx.bench_stat.req_ts[tag.cid],
         ctx.rpc.as_ref().unwrap().get_freq_ghz(),
     );
     ctx.bench_stat.lat_vec.push(usec);
@@ -56,11 +56,12 @@ pub async fn client_main(args: Args) -> Result<()> {
         };
         req.buf[0] = K_APP_DATA_BYTE;
 
-        for _j in 0..args.concurrency {
+        for j in 0..args.concurrency {
+            // FIXME: +10 is to prevent the problem of insufficient space when pb encoding and decoding
             let req_msgbuf = Arc::new(client.alloc_msg_buffer(args.req_size + 10));
             let resp_msgbuf = Arc::new(client.alloc_msg_buffer(args.resp_size + 10));
 
-            if req_msgbuf.get_data_size() != args.req_size {
+            if req_msgbuf.get_data_size() != args.req_size + 10 {
                 panic!("allocated req_msgbuf's data size not eq arg's req_size");
             }
 
@@ -73,7 +74,7 @@ pub async fn client_main(args: Args) -> Result<()> {
             tokio::spawn(async move {
                 loop {
                     let resp = client
-                        .send_request(&req, req_msgbuf.clone(), resp_msgbuf.clone(), cont_func)
+                        .send_request(&req, req_msgbuf.clone(), resp_msgbuf.clone(), cont_func, j)
                         .await
                         .unwrap();
                     if resp.buf.len() != args.resp_size {
