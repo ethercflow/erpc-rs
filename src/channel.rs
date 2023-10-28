@@ -138,7 +138,14 @@ impl ChannelBuilder {
                     let mut subchans = Vec::new();
                     for _i in 0..self.subchan_count {
                         // TODO: make rem_rpc_id configurable
-                        subchans.push(rpc.create_session(uri.as_str(), 0).unwrap());
+                        let sid = rpc.create_session(uri.as_str(), 0).unwrap();
+                        loop {
+                            rpc.run_event_loop_once();
+                            if rpc.is_connected(sid) {
+                                break;
+                            }
+                        }
+                        subchans.push(sid);
                     }
                     let (stx, srx) = bounded::<()>(1);
                     let chan = Channel {
